@@ -233,3 +233,35 @@ body.scanning { overflow: hidden; }
 .sc-step .qinput { width: 72px; font-size: 24px; }
 html { overflow-anchor: none; }
 .stepper button.q { width: auto; min-width: 44px; padding: 0 4px; height: 44px; border: 0; background: transparent; color: var(--ink); font-family: "Nunito", sans-serif; font-weight: 900; font-size: 20px; }
+
+/* Scanner : 4 modes, rafale, recherche */
+.sc-top { gap: 8px; }
+.sc-seg button { padding: 0 11px; font-size: 14px; }
+.sc-frame.small { width: 230px; height: 120px; margin-top: 4vh; }
+.sc-batch { max-height: 62vh; }
+.sc-brow { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--soft); }
+.sc-brow .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.input.sm { height: 40px; font-size: 16px; padding: 0 12px; border-radius: 12px; }
+.input.bad { border: 2px solid var(--warn); }
+.sc-cat { border: 0; background: var(--soft); color: var(--muted-2); border-radius: 12px; height: 30px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+.sc-bq { display: flex; align-items: center; background: var(--soft); border-radius: 22px; padding: 2px; }
+.sc-bq button { width: 36px; height: 40px; border: 0; background: transparent; color: var(--ink); font-size: 20px; font-weight: 700; }
+.qinput.sm { width: 44px; height: 36px; font-size: 18px; }
+.sc-x { width: 36px; height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 24px; }
+.sc-stock { margin: 0; font-family: "Nunito", sans-serif; font-weight: 900; font-size: 22px; color: var(--mint-ink); }
+.sc-stock.none { color: var(--warn); }
+.sc-status.sm { align-self: flex-start; padding: 6px 12px; font-size: 14px; }
+
+/* Liste de courses & kits */
+.shop-entry { display: flex; align-items: center; gap: 12px; padding: 14px 16px; text-decoration: none; color: var(--ink); }
+.shop-entry .grow { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.check { width: 28px; height: 28px; flex: none; border-radius: 14px; border: 2px solid var(--border-2); display: inline-flex; align-items: center; justify-content: center; color: var(--primary-ink); }
+.check.on { background: var(--primary); border-color: var(--primary); }
+.row-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 8px 6px 8px 14px; border: 0; border-bottom: 1px solid var(--soft); background: transparent; text-align: left; }
+.row-btn:last-child { border-bottom: 0; }
+.row-btn .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-btn.done .t { text-decoration: line-through; color: var(--muted); }
+.qty-tag { font-family: "Nunito", sans-serif; font-weight: 900; font-size: 16px; white-space: nowrap; }
+.kit-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--soft); }
+.kit-row:last-child { border-bottom: 0; }
+.kit-row .grow { flex: 1; min-width: 0; }

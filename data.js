@@ -45,13 +45,17 @@ function demoStore() {
     ],
     history: [],
     barcodes: {},
+    shopping: {},
   });
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { db = seed(); }
   const listeners = new Set();
+  const shopListeners = new Set();
+  const shopList = () => Object.entries(db.shopping || {}).map(([id, v]) => ({ id, ...v }));
   const save = () => {
     try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {}
     listeners.forEach((cb) => cb(db.products.map((p) => ({ ...p }))));
+    shopListeners.forEach((cb) => cb(shopList()));
   };
   const user = { email: "demo@plakardo", demo: true };
   return {
@@ -85,6 +89,10 @@ function demoStore() {
       db.products = db.products.filter((x) => x.id !== id);
       save();
     },
+    subscribeShopping(cb) { shopListeners.add(cb); cb(shopList()); return () => shopListeners.delete(cb); },
+    async setShopping(id, data) { db.shopping = db.shopping || {}; db.shopping[id] = { ...(db.shopping[id] || {}), ...data }; save(); },
+    async addShopping(data) { db.shopping = db.shopping || {}; db.shopping["m" + Date.now()] = data; save(); },
+    async deleteShopping(id) { if (db.shopping) delete db.shopping[id]; save(); },
     async getBarcode(key) { return (db.barcodes || {})[key] || null; },
     async saveBarcode(key, data) { db.barcodes = db.barcodes || {}; db.barcodes[key] = data; save(); },
     async resetDemo() { db = seed(); save(); },
@@ -135,6 +143,18 @@ async function firebaseStore() {
       batch.commit().catch((e) => console.error("Écriture refusée", e));
     },
     deleteProduct(id) { return fs.deleteDoc(pRef(id)); },
+    subscribeShopping(cb) {
+      return fs.onSnapshot(fs.collection(db, ...base, "shopping"), (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data() }))), () => {});
+    },
+    setShopping(id, data) {
+      return fs.setDoc(fs.doc(db, ...base, "shopping", id), data, { merge: true }).catch((e) => console.error(e));
+    },
+    addShopping(data) {
+      return fs.addDoc(fs.collection(db, ...base, "shopping"), { ...data, createdAt: fs.serverTimestamp() }).catch((e) => console.error(e));
+    },
+    deleteShopping(id) {
+      return fs.deleteDoc(fs.doc(db, ...base, "shopping", id)).catch((e) => console.error(e));
+    },
     async getBarcode(key) {
       try {
         const snap = await fs.getDoc(fs.doc(db, ...base, "barcodes", encodeURIComponent(key)));

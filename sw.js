@@ -1,6 +1,6 @@
 // Service worker : l'app s'ouvre même sans réseau.
 // Changer VERSION à chaque mise à jour publiée.
-const VERSION = "plakardo-v1-scan-4";
+const VERSION = "plakardo-v1-lot2-1";
 const SHELL = [
   "./",
   "index.html",

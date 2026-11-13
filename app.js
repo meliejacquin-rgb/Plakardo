@@ -1,6 +1,7 @@
 // PLAKARDO – application (v1, socle)
 import { createStore, isDemo, displayName, resolveName } from "./data.js";
 import { household } from "./firebase-config.js";
+import { parseDateText } from "./codes.js";
 import { initScanner, openScanner, closeScanner, refreshScanner } from "./scan.js";
 
 // ───────────────────────── Référentiels ─────────────────────────
@@ -76,6 +77,8 @@ const app = document.getElementById("app");
 let store = null;
 let user;              // undefined = en attente, null = déconnecté
 let products = [];
+let shopping = [];
+let unsubShop = null;
 let loaded = false;
 let dataError = "";
 let unsub = null;
@@ -85,6 +88,9 @@ const ui = {
   toast: null,
   search: "",
   alertTab: "dates",
+  shopNew: "",
+  kitCat: "chat",
+  kitSel: null,
   form: null,
   formKey: "",
   formError: "",
@@ -203,6 +209,65 @@ async function deleteProduct() {
   go(`#/placard/${f.categoryId}`);
 }
 
+// ───────────────────────── Kits de démarrage ─────────────────────────
+const KITS = {
+  alim: [
+    ["Pâtes", "pièce", 2, 1], ["Riz", "pièce", 1, 1], ["Tomates en conserve", "boîte", 3, 1], ["Huile d’olive", "flacon", 1, 0],
+    ["Café", "pièce", 1, 0], ["Lait", "L", 4, 2], ["Œufs", "pièce", 6, 2], ["Farine", "g", 1000, 250], ["Sucre", "g", 1000, 250], ["Sel", "pièce", 1, 0],
+  ],
+  pharma: [
+    ["Paracétamol", "boîte", 1, 0], ["Ibuprofène", "boîte", 1, 0], ["Pansements", "boîte", 1, 0], ["Désinfectant", "flacon", 1, 0],
+    ["Sérum physiologique", "boîte", 1, 0], ["Thermomètre", "pièce", 1, -1],
+  ],
+  hyg: [
+    ["Gel douche", "flacon", 2, 1], ["Shampooing", "flacon", 1, 0], ["Dentifrice", "tube", 2, 1], ["Brosses à dents", "pièce", 2, 0],
+    ["Papier toilette", "pièce", 12, 4], ["Déodorant", "pièce", 1, 0], ["Coton", "sachet", 1, 0],
+  ],
+  chat: [
+    ["Pâtée", "boîte", 12, 6], ["Croquettes", "sac", 1, 0], ["Litière", "sac", 2, 1], ["Friandises", "sachet", 2, 0],
+    ["Antiparasitaire", "boîte", 1, 0], ["Sacs à litière", "pièce", 1, 0],
+  ],
+};
+
+// ───────────────────────── Liste de courses ─────────────────────────
+function shoppingItems() {
+  const byId = Object.fromEntries(shopping.map((d) => [d.id, d]));
+  const items = [];
+  for (const p of products) {
+    const doc = byId[`p_${p.id}`];
+    const low = isLow(p);
+    if (!low && !doc?.forced) continue;
+    const suggest = Math.max(1, Math.round((parseQ(p.minQuantity) - qty(p) + 1) * 1000) / 1000);
+    items.push({
+      id: `p_${p.id}`, product: p, label: p.name, categoryId: p.categoryId,
+      qty: doc?.qty ?? suggest, checked: !!doc?.checked,
+      why: low ? (qty(p) === 0 ? "Épuisé" : `Il en reste ${fmtQ(qty(p))} · seuil ${fmtQ(parseQ(p.minQuantity))}`) : "Ajouté depuis le scan",
+    });
+  }
+  for (const d of shopping) {
+    if (d.productId) continue;
+    items.push({ id: d.id, product: null, label: d.label || "Article", categoryId: "manual", qty: d.qty || 1, checked: !!d.checked, why: "Ajouté à la main" });
+  }
+  return items;
+}
+async function storeChecked() {
+  const done = shoppingItems().filter((it) => it.checked);
+  for (const it of done) {
+    if (it.product) store.changeQty(it.product.id, parseQ(it.qty) || 1, me());
+    store.deleteShopping(it.id);
+  }
+  showToast(`${done.length} article${done.length > 1 ? "s" : ""} rangé${done.length > 1 ? "s" : ""} dans les placards`);
+  render();
+}
+async function shareList() {
+  const items = shoppingItems().filter((it) => !it.checked);
+  const text = "Courses " + household.name + " :\n" + items.map((it) => `- ${it.label}${it.product ? ` ×${fmtQ(it.qty)}` : ""}`).join("\n");
+  try {
+    if (navigator.share) await navigator.share({ title: "Liste de courses", text });
+    else { await navigator.clipboard.writeText(text); showToast("Liste copiée"); render(); }
+  } catch {}
+}
+
 // ───────────────────────── Vues ─────────────────────────
 function nav(current) {
   const link = (hash, key, label, icon) =>
@@ -274,6 +339,12 @@ function homeBody() {
       }).join("")}
     </section>`;
   }
+  const nShop = shoppingItems().filter((it) => !it.checked).length;
+  body += `<a class="card shop-entry" href="#/courses">
+    <span class="cat-ico" style="background:var(--blush);color:var(--primary)">${svg('<path d="M4 5h2l2 11h10l2-8H7"/><circle cx="10" cy="20" r="1.2"/><circle cx="17" cy="20" r="1.2"/>', 22, 2)}</span>
+    <span class="grow"><span class="t">Liste de courses</span><span class="s">${nShop ? plural(nShop, "article à acheter", "articles à acheter") : "Rien à acheter pour l’instant"}</span></span>
+    ${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}
+  </a>`;
   body += catGrid();
   if (low.length) {
     body += `<section aria-label="Bientôt épuisé" style="display:flex;flex-direction:column;gap:10px">
@@ -282,7 +353,11 @@ function homeBody() {
     </section>`;
   }
   if (!products.length && loaded) {
-    body += `<p class="empty-state">Vos placards sont vides pour l’instant. Ouvrez un placard ou touchez <strong>Scanner</strong> pour ajouter vos premiers produits.</p>`;
+    body += `<section class="card" style="padding:18px;display:flex;flex-direction:column;gap:10px">
+      <span class="pill mint" style="align-self:flex-start">Pour bien démarrer</span>
+      <span class="t">Remplissez un placard en 1 minute avec un kit prérempli : kit chat, pharmacie de base, salle de bain…</span>
+      <a class="cta" href="#/kits" style="height:50px">Choisir un kit</a>
+    </section>`;
   }
   return body;
 }
@@ -358,7 +433,7 @@ function viewPlacard(catId) {
         <span class="sub">${plural(all.filter((p) => qty(p) > 0).length, "article", "articles")} · ${lows ? plural(lows, "stock bas", "stocks bas") : "aucun stock bas"}</span></div>
     </div>
     <div class="chips" role="group" aria-label="Filtrer">${chip("tout", "Tout")}${chip("bas", "Stock bas")}${chip("date", "Date proche")}</div>
-    <div class="items">${list.length ? list.map(itemHtml).join("") : `<p class="empty-state">${all.length ? "Rien dans ce filtre." : "Ce placard est vide. Touchez Ajouter."}</p>`}</div>
+    <div class="items">${list.length ? list.map(itemHtml).join("") : `<p class="empty-state">${all.length ? "Rien dans ce filtre." : `Ce placard est vide. Touchez Ajouter, ou <a href="#/kits" data-act="kit-cat" data-v="${c.id}">utilisez le kit ${c.name}</a>.`}</p>`}</div>
     ${list.length ? `<p class="hint">Glissez un produit vers la gauche pour le retirer. Touchez son nom pour le modifier.</p>` : ""}
   </main>
   ${ui.toast ? "" : `<a class="fab" href="#/ajout?cat=${c.id}">${I.plus(20)}Ajouter</a>`}
@@ -402,10 +477,11 @@ function viewForm(r) {
       <div class="chips" role="group" aria-label="Unité">${UNITS.map((u) => `<button type="button" class="chip sm" data-act="fset" data-field="unit" data-v="${u}" aria-pressed="${f.unit === u}">${u}</button>`).join("")}</div>
     </div>
     <div class="field">
-      <div class="row-between"><span class="label">${isFood ? "DLC / DDM" : "Date de péremption (facultatif)"}</span><span class="sub" style="font-weight:700;color:var(--mint-ink)">${f.expiry ? frDate(f.expiry) : "Sans date"}</span></div>
+      <div class="row-between"><span class="label">${isFood ? "DLC / DDM" : "Date de péremption (facultatif)"}</span><span id="f-date-res" class="sub" style="font-weight:700;color:var(--mint-ink)">${f.expiry ? frDate(f.expiry) : "Sans date"}</span></div>
       <div class="chips" role="group" aria-label="Raccourcis de date">${shortcuts.map(([v, l]) => `<button type="button" class="chip sm" data-act="fset" data-field="expiry" data-v="${v}" aria-pressed="${f.expiry === v}">${l}</button>`).join("")}</div>
-      <label class="sr" for="f-date">Choisir une date</label>
-      <input id="f-date" class="input" type="date" data-field="expiry" value="${esc(f.expiry)}">
+      <label class="sr" for="f-date">Saisir ou scanner la date</label>
+      <input id="f-date" class="input" type="text" inputmode="numeric" autocomplete="off" data-date placeholder="JJ/MM/AA ou MM/AA" value="${esc(f.expiryText ?? (f.expiry ? frDate(f.expiry) : ""))}">
+      <span class="s">Astuce : touchez la case puis « Scanner du texte » pour lire la date sur l’emballage avec l’appareil photo.</span>
     </div>
     <div class="card" style="overflow:hidden">
       <button type="button" class="toggle" data-act="falert" aria-pressed="${!!f.lowAlert}">
@@ -445,7 +521,7 @@ function viewAlertes() {
       : `<p class="empty-state">Aucune date proche. Tout va bien.</p>`;
   } else {
     body = lows.length
-      ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Sous le seuil (${lows.length})</h2><div class="card list">${lows.map((p) => row(p, "inc", "+1", qty(p) === 0)).join("")}</div></section>`
+      ? `<a class="out-btn" href="#/courses" style="align-self:flex-start;display:inline-flex;align-items:center;text-decoration:none">Voir la liste de courses</a><section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Sous le seuil (${lows.length})</h2><div class="card list">${lows.map((p) => row(p, "inc", "+1", qty(p) === 0)).join("")}</div></section>`
       : `<p class="empty-state">Aucun stock bas.</p>`;
   }
   return `<main class="screen">
@@ -483,6 +559,7 @@ function viewProfil() {
         <button class="toggle" data-act="big" aria-pressed="${big}"><span style="display:flex;flex-direction:column;gap:2px"><span class="t">Texte agrandi</span><span class="s">Pour lire plus facilement</span></span><span class="switch"></span></button>
       </div>
     </section>
+    <a class="card shop-entry" href="#/kits"><span class="grow"><span class="t">Kits de démarrage</span><span class="s">Ajouter d’un coup les produits courants d’un placard</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>
     <section class="card" style="padding:14px 16px;display:flex;gap:12px;align-items:center">
       <span style="color:var(--primary)">${I.share(22)}</span>
       <span style="display:flex;flex-direction:column;gap:2px"><span class="t">Installer sur un autre iPhone</span><span class="s">Ouvrir le lien dans Safari › Partager › Sur l’écran d’accueil</span></span>
@@ -491,6 +568,78 @@ function viewProfil() {
       ? `<button class="danger-btn" data-act="reset-demo">Remettre les données d’exemple</button>`
       : `<button class="danger-btn" data-act="logout">Se déconnecter</button>`}
   </main>${nav("profil")}`;
+}
+
+function viewCourses() {
+  const items = shoppingItems();
+  const groups = [...CATS.map((c) => ({ title: c.name, id: c.id })), { title: "Ajouté à la main", id: "manual" }]
+    .map((g) => ({ ...g, rows: items.filter((it) => it.categoryId === g.id).sort((a, b) => a.label.localeCompare(b.label, "fr")) }))
+    .filter((g) => g.rows.length);
+  const nChecked = items.filter((it) => it.checked).length;
+  const row = (it) => `<div class="row-btn${it.checked ? " done" : ""}" style="padding-right:0">
+      <button type="button" class="row-btn" style="border:0;padding:0;min-height:56px;flex:1" data-act="shop-toggle" data-id="${it.id}" aria-pressed="${it.checked}">
+        <span class="check${it.checked ? " on" : ""}">${it.checked ? svg('<path d="M5 12.5l4.5 4.5L19 7"/>', 16, 3) : ""}</span>
+        <span class="grow"><span class="t">${esc(it.label)}</span><span class="s">${esc(it.why)}</span></span>
+        ${it.product ? `<span class="qty-tag">×${fmtQ(it.qty)}</span>` : ""}
+      </button>
+      ${it.product ? "" : `<button class="sc-x" data-act="shop-del" data-id="${it.id}" aria-label="Supprimer ${esc(it.label)}">×</button>`}
+    </div>`;
+  return `<main class="screen">
+    <div class="top">
+      <a class="icon-btn" href="#/" aria-label="Retour">${I.back(22)}</a>
+      <div class="grow"><h1 style="font-size:calc(26px * var(--fs))">Liste de courses</h1><span class="sub">Créée depuis les stocks bas · partagée avec le foyer</span></div>
+      <button class="icon-btn" data-act="shop-share" aria-label="Partager la liste">${I.share(20)}</button>
+    </div>
+    <form id="shop-add" class="search" style="padding-right:6px">
+      <label class="sr" for="shop-new">Ajouter un article</label>
+      <input id="shop-new" placeholder="Ajouter un article…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
+      <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button>
+    </form>
+    ${groups.length ? groups.map((g) => `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">${g.title}</h2><div class="card list">${g.rows.map(row).join("")}</div></section>`).join("")
+      : `<p class="empty-state">Rien à acheter pour l’instant. Les produits en alerte de stock bas s’ajoutent ici tout seuls.</p>`}
+  </main>
+  <div class="cta-bar"><button class="cta" data-act="shop-store" ${nChecked ? "" : "disabled"}>${nChecked === 1 ? "Ranger l’article coché" : nChecked ? `Ranger les ${nChecked} articles cochés` : "Cochez en magasin, rangez d’un appui"}</button></div>`;
+}
+
+function viewKits() {
+  const cat = ui.kitCat;
+  const kit = KITS[cat] || [];
+  if (!ui.kitSel || ui.kitSel.cat !== cat) {
+    ui.kitSel = { cat, items: kit.map(([name, unit, q, min]) => ({ name, unit, q, min, on: !products.some((p) => p.categoryId === cat && p.name.toLowerCase() === name.toLowerCase()) })) };
+  }
+  const sel = ui.kitSel.items;
+  const n = sel.filter((x) => x.on).length;
+  return `<main class="screen">
+    <div class="top">
+      <a class="icon-btn" href="#/" aria-label="Retour">${I.back(22)}</a>
+      <div class="grow"><h1 style="font-size:calc(26px * var(--fs))">Kits de démarrage</h1><span class="sub">Cochez ce que vous avez, ajustez les quantités</span></div>
+    </div>
+    <div class="chips" role="group" aria-label="Placard">${CATS.map((c) => `<button class="chip" data-act="kit-cat" data-v="${c.id}" aria-pressed="${cat === c.id}">${c.name}</button>`).join("")}</div>
+    <div class="card">${sel.map((x, i) => {
+      const exists = products.some((p) => p.categoryId === cat && p.name.toLowerCase() === x.name.toLowerCase());
+      return `<div class="kit-row">
+        <button type="button" class="check${x.on ? " on" : ""}" style="background-clip:padding-box" data-act="kit-toggle" data-i="${i}" aria-pressed="${x.on}" aria-label="${esc(x.name)}">${x.on ? svg('<path d="M5 12.5l4.5 4.5L19 7"/>', 16, 3) : ""}</button>
+        <span class="grow"><span class="t" style="display:block">${esc(x.name)}</span><span class="s">${exists ? "Déjà dans le placard" : x.min < 0 ? "Sans alerte" : x.min ? `Alerte sous ${fmtQ(x.min)}` : "Alerte à 0"}</span></span>
+        <input class="qinput sm" type="text" inputmode="decimal" data-kitq data-i="${i}" value="${fmtQ(x.q)}" aria-label="Quantité de ${esc(x.name)}">
+        <span class="s" style="min-width:42px">${esc(x.q > 1 ? PLURAL[x.unit] || x.unit : x.unit)}</span>
+      </div>`;
+    }).join("")}</div>
+    <p class="hint">Vous pourrez tout modifier ensuite produit par produit.</p>
+  </main>
+  <div class="cta-bar"><button class="cta" data-act="kit-add" ${n ? "" : "disabled"}>Ajouter ${n} produit${n > 1 ? "s" : ""} au placard ${CAT[cat].name}</button></div>`;
+}
+
+async function addKit() {
+  const cat = ui.kitCat;
+  const chosen = (ui.kitSel?.items || []).filter((x) => x.on);
+  for (const x of chosen) {
+    const twin = products.find((p) => p.categoryId === cat && p.name.toLowerCase() === x.name.toLowerCase());
+    if (twin) { const d = parseQ(x.q); if (d) store.changeQty(twin.id, d, me()); continue; }
+    await store.addProduct({ name: x.name, detail: "", categoryId: cat, unit: x.unit, quantity: parseQ(x.q), expiry: null, minQuantity: Math.max(0, x.min), lowAlert: x.min >= 0, updatedBy: me() });
+  }
+  showToast(`${chosen.length} produit${chosen.length > 1 ? "s" : ""} ajouté${chosen.length > 1 ? "s" : ""}`);
+  ui.kitSel = null;
+  go(`#/placard/${cat}`);
 }
 
 function viewLogin() {
@@ -531,6 +680,8 @@ function render() {
       case "ajout":
       case "produit": html = viewForm(r); break;
       case "alertes": html = viewAlertes(); break;
+      case "courses": html = viewCourses(); break;
+      case "kits": html = viewKits(); break;
       case "profil": html = viewProfil(); break;
       case "scan": html = viewHome(); break;
       default: html = viewHome();
@@ -570,13 +721,24 @@ app.addEventListener("click", (e) => {
     case "filter": ui.filter = v; render(); break;
     case "atab": ui.alertTab = v; render(); break;
     case "undo": { const u = ui.toast?.undo; ui.toast = null; clearTimeout(toastTimer); if (u) u(); render(); break; }
-    case "fset": if (ui.form) { ui.form[field] = v; ui.deleteArmed = false; render(); } break;
+    case "fset": if (ui.form) { ui.form[field] = v; if (field === "expiry") ui.form.expiryText = v ? frDate(v) : ""; ui.deleteArmed = false; render(); } break;
     case "fstep": if (ui.form) {
       const n = Math.max(0, parseQ(ui.form[field]) + Number(v));
       ui.form[field] = n;
       const el = document.getElementById(`f-${field}`);
       if (el) el.value = fmtQ(n); else render();
     } break;
+    case "shop-toggle": {
+      const it = shoppingItems().find((x) => x.id === id);
+      if (it) store.setShopping(id, it.product ? { productId: it.product.id, checked: !it.checked } : { checked: !it.checked });
+      break;
+    }
+    case "shop-del": store.deleteShopping(id); break;
+    case "shop-store": storeChecked(); break;
+    case "shop-share": shareList(); break;
+    case "kit-cat": ui.kitCat = v; ui.kitSel = null; if (route().name === "kits") render(); break;
+    case "kit-toggle": { const x = ui.kitSel?.items[Number(t.dataset.i)]; if (x) { x.on = !x.on; render(); } break; }
+    case "kit-add": addKit(); break;
     case "falert": if (ui.form) { ui.form.lowAlert = !ui.form.lowAlert; render(); } break;
     case "save": saveForm(); break;
     case "delete": deleteProduct(); break;
@@ -595,6 +757,17 @@ app.addEventListener("input", (e) => {
     if (box) box.innerHTML = homeBody(); else render();
     return;
   }
+  if (t.matches("[data-shopnew]")) { ui.shopNew = t.value; return; }
+  if (t.matches("[data-kitq]")) { const x = ui.kitSel?.items[Number(t.dataset.i)]; if (x) x.q = parseQ(t.value); return; }
+  if (t.matches("[data-date]") && ui.form) {
+    ui.form.expiryText = t.value;
+    const iso = parseDateText(t.value);
+    const res = document.getElementById("f-date-res");
+    if (!t.value.trim()) { ui.form.expiry = ""; if (res) { res.textContent = "Sans date"; res.style.color = "var(--mint-ink)"; } }
+    else if (iso) { ui.form.expiry = iso; if (res) { res.textContent = frDate(iso); res.style.color = "var(--mint-ink)"; } }
+    else if (res) { res.textContent = "Date non reconnue"; res.style.color = "var(--warn)"; }
+    return;
+  }
   if (t.matches("[data-field]") && ui.form) {
     ui.form[t.dataset.field] = t.value;
     if (t.type === "date") render();
@@ -602,6 +775,12 @@ app.addEventListener("input", (e) => {
 });
 
 app.addEventListener("submit", async (e) => {
+  if (e.target.id === "shop-add") {
+    e.preventDefault();
+    const label = ui.shopNew.trim();
+    if (label) { store.addShopping({ label, qty: 1, checked: false }); ui.shopNew = ""; render(); }
+    return;
+  }
   if (e.target.id !== "login") return;
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -668,10 +847,13 @@ async function start() {
     if (u) await resolveName(u.email);
     user = u;
     if (unsub) { unsub(); unsub = null; }
+    if (unsubShop) { unsubShop(); unsubShop = null; }
+    shopping = [];
     products = [];
     loaded = false;
     dataError = "";
     if (u) {
+      unsubShop = store.subscribeShopping((list) => { shopping = list; render(); });
       unsub = store.subscribe(
         (list) => { products = list; loaded = true; render(); refreshScanner(); },
         (err) => {

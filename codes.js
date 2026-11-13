@@ -102,3 +102,48 @@ export async function lookupOFF(ean) {
     clearTimeout(timer);
   }
 }
+
+// Date tapée ou lue sur l'emballage (« Scanner du texte » de l'iPhone).
+// Comprend : 12/03/27, 12.03.2027, 12-03-2027, 120327, 12032027, 03/2027, 0327, 2027-03-12,
+// « 12 mars 2027 », « MAR 2027 », « EXP 09/2027 », « MHD 12.03.27 »…
+const MONTHS = {
+  jan: 1, janv: 1, janvier: 1, januar: 1, january: 1,
+  fev: 2, fév: 2, fevr: 2, févr: 2, fevrier: 2, février: 2, feb: 2, februar: 2, february: 2,
+  mar: 3, mars: 3, märz: 3, marz: 3, march: 3,
+  avr: 4, avril: 4, apr: 4, april: 4,
+  mai: 5, may: 5,
+  juin: 6, jun: 6, juni: 6, june: 6,
+  juil: 7, juillet: 7, jul: 7, juli: 7, july: 7,
+  aou: 8, aoû: 8, aout: 8, août: 8, aug: 8, august: 8,
+  sep: 9, sept: 9, septembre: 9, september: 9,
+  oct: 10, octobre: 10, okt: 10, oktober: 10, october: 10,
+  nov: 11, novembre: 11, november: 11,
+  dec: 12, déc: 12, decembre: 12, décembre: 12, dez: 12, dezember: 12, december: 12,
+};
+function mk(y, m, d) {
+  y = Number(y); m = Number(m);
+  if (y < 100) y += 2000;
+  if (m < 1 || m > 12 || y < 2000 || y > 2100) return null;
+  const last = new Date(y, m, 0).getDate();
+  d = d == null ? last : Number(d);
+  if (d < 1 || d > last) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+export function parseDateText(input) {
+  const t = String(input || "").toLowerCase().replace(/[’']/g, " ").trim();
+  if (!t) return null;
+  let m;
+  if ((m = t.match(/(20\d\d)[-./](\d{1,2})[-./](\d{1,2})/))) return mk(m[1], m[2], m[3]);
+  if ((m = t.match(/(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4}|\d{2})(?!\d)/))) return mk(m[3], m[2], m[1]);
+  if ((m = t.match(/(\d{1,2})\s+(\d{1,2})\s+(\d{4}|\d{2})(?!\d)/))) return mk(m[3], m[2], m[1]);
+  if ((m = t.match(/(?:(\d{1,2})\s*)?([a-zéûäö]{3,9})\.?\s*(\d{4}|\d{2})(?!\d)/))) {
+    const mo = MONTHS[m[2]] || MONTHS[m[2].slice(0, 4)] || MONTHS[m[2].slice(0, 3)];
+    if (mo) return mk(m[3], mo, m[1] || null);
+  }
+  if ((m = t.match(/(?<!\d)(\d{1,2})\s*[./-]\s*(\d{4}|\d{2})(?!\d)/))) return mk(m[2], m[1], null);
+  const digits = t.replace(/\D/g, "");
+  if (digits.length === 8 && /^(0[1-9]|[12]\d|3[01])/.test(digits)) return mk(digits.slice(4), digits.slice(2, 4), digits.slice(0, 2));
+  if (digits.length === 6) return mk(digits.slice(4), digits.slice(2, 4), digits.slice(0, 2));
+  if (digits.length === 4) return mk(digits.slice(2), digits.slice(0, 2), null);
+  return null;
+}
