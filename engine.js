@@ -259,6 +259,11 @@ export function priorityList(products, now = new Date()) {
   return out.sort((a, b) => b.score - a.score);
 }
 
+export const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+export function weekDays(n, now = new Date()) {
+  const start = (now.getDay() + 6) % 7; // aujourd'hui
+  return Array.from({ length: Math.max(1, Math.min(7, n)) }, (_, i) => DAYS[(start + i) % 7]);
+}
 export function buildPrompt({ products, locations, filters, prefs, mode, now = new Date() }) {
   const locName = Object.fromEntries((locations || []).map((l) => [l.id, l.name]));
   const food = products.filter((p) => p.categoryId === "alim" && isAvailable(p));
@@ -278,8 +283,10 @@ export function buildPrompt({ products, locations, filters, prefs, mode, now = n
   const f = filters || {};
   const pr = prefs || {};
   const lines = [
-    "Tu es l’assistant cuisine de l’app Plakardo. Propose exactement 3 recettes.",
-    mode === "inspiration" ? "Mode « Trouver l’inspiration » : tu peux sortir du stock, mais signale ce qui manque." : "Mode « Avec mes stocks » : utilise en priorité le stock ci-dessous et limite les achats.",
+    mode === "week"
+      ? (() => { const nd = (filters && filters.days) || 5; const two = /et d/.test((filters && filters.meal) || ""); return `Tu es l’assistant cuisine de l’app Plakardo. Prépare le menu de la semaine : exactement ${two ? nd * 2 : nd} recettes, ${two ? "deux par jour (déjeuner puis dîner)" : "une par jour"} (${weekDays(nd).join(", ")}), pour le ${two ? "déjeuner et le dîner" : (filters && filters.meal) || "dîner"}. Indique le jour dans "jour"${two ? " et le repas dans \"description\"" : ""}.`; })() + ` Place en début de semaine les recettes qui utilisent les produits aux dates les plus proches. Varie les plats et ne compte pas deux fois le même stock.`
+      : "Tu es l’assistant cuisine de l’app Plakardo. Propose exactement 3 recettes.",
+    mode === "week" ? "Utilise en priorité le stock ci-dessous ; les achats nécessaires seront ajoutés automatiquement à la liste de courses." : mode === "inspiration" ? "Mode « Trouver l’inspiration » : tu peux sortir du stock, mais signale ce qui manque." : "Mode « Avec mes stocks » : utilise en priorité le stock ci-dessous et limite les achats.",
     f.antigaspi !== false ? "Priorité anti-gaspillage : utilise d’abord les produits prioritaires." : "",
     "",
     "CONTRAINTES",
@@ -304,7 +311,7 @@ export function buildPrompt({ products, locations, filters, prefs, mode, now = n
     "",
     "FORMAT DE RÉPONSE OBLIGATOIRE : uniquement un bloc ```json, sans texte autour, de la forme :",
     '```json',
-    '{"recettes":[{"titre":"…","description":"…","theme":"…","type":"Plat","portions":2,"preparation_min":10,"cuisson_min":20,"difficulte":"Facile",',
+    '{"recettes":[{"jour":"Lundi","titre":"…","description":"…","theme":"…","type":"Plat","portions":2,"preparation_min":10,"cuisson_min":20,"difficulte":"Facile",',
     '"ingredients":[{"nom":"…","quantite":200,"unite":"g","id":"id du stock ou null","indivisible":false}],',
     '"etapes":["…","…"],"substitutions":["…"],"allergenes":["…"],"dessin_svg":"<svg viewBox=\'0 0 64 64\'>…</svg>"}],"blocage":null}',
     '```',
@@ -359,7 +366,7 @@ export function parseRecipes(text, products) {
     if (problems.length) { errors.push(`${label} refusée : ${problems.join(", ")}.`); return; }
     recipes.push({
       id: "tmp" + Date.now().toString(36) + i,
-      title: r.titre.trim(), description: String(r.description || "").trim(), theme: String(r.theme || "").trim(), type: String(r.type || "Plat").trim(),
+      day: String(r.jour || "").trim(), title: r.titre.trim(), description: String(r.description || "").trim(), theme: String(r.theme || "").trim(), type: String(r.type || "Plat").trim(),
       portions, prepMin: Math.max(0, Math.round(num(r.preparation_min))), cookMin: Math.max(0, Math.round(num(r.cuisson_min))),
       difficulty: String(r.difficulte || "").trim(), ingredients, steps: steps.map((s) => s.trim()),
       substitutions: (Array.isArray(r.substitutions) ? r.substitutions : []).filter((s) => typeof s === "string"),

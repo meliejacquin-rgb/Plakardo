@@ -97,8 +97,8 @@ const ui = {
   cookSearch: "",
   addSearch: "",
   stockView: "lieu",
-  recFilters: { portions: 2, theme: "", maxTime: "", difficulty: "", dishType: "", mustUse: [], exclude: [], extraBuys: "1 à 2 ingrédients", antigaspi: true },
-  recMode: "stock",
+  recFilters: { portions: 2, theme: "", maxTime: "", difficulty: "", dishType: "", mustUse: [], exclude: [], extraBuys: "1 à 2 ingrédients", antigaspi: true, days: 5, meal: "dîner" },
+  recMode: "week",
   recPaste: "",
   recParsed: null,
   recPortions: {},
@@ -1012,6 +1012,7 @@ function vignette(r, size = 64) {
   else dish = `<ellipse cx="32" cy="36" rx="22" ry="15" fill="#fff"/><ellipse cx="32" cy="36" rx="15" ry="9.5" fill="${bg}"/>${dots}`;
   return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 64 64" style="border-radius:${size / 4}px;flex:none"><rect width="64" height="64" fill="${bg}"/>${dish}</svg>`;
 }
+const isFav = (r) => (r.kind || "recipe") === "recipe";
 const recTime = (r) => (r.prepMin || 0) + (r.cookMin || 0);
 function loadParsed() {
   if (ui.recParsed) return ui.recParsed;
@@ -1030,7 +1031,7 @@ const tagPill = (t) => `<span class="pill" style="${t.kind === "prio" ? "backgro
 
 function recipeCard(r) {
   const sc = E.scoreRecipe(r, products);
-  const fav = recipes.some((x) => x.id === r.id);
+  const fav = recipes.some((x) => x.id === r.id && isFav(x));
   return `<a class="card" href="#/recette/${encodeURIComponent(r.id)}" style="padding:12px;display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">
     ${vignette(r, 64)}
     <span class="grow" style="display:flex;flex-direction:column;gap:4px;min-width:0">
@@ -1044,21 +1045,23 @@ function viewRecettes() {
   const f = ui.recFilters;
   const parsed = loadParsed();
   const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
-  const favs = recipes.filter((r) => r.kind !== "prep");
+  const favs = recipes.filter(isFav);
   const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
   const sorted = parsed ? [...parsed.recipes].sort((a, b) => E.scoreRecipe(b, products).score - E.scoreRecipe(a, products).score) : [];
   return `<main class="screen">${offlineBanner()}
     <div class="top"><div class="grow"><h1>Recettes</h1><span class="sub">Claude propose, Plakardo vérifie le stock</span></div>
       <a class="icon-btn" href="#/menu" aria-label="Menu de la semaine">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</a></div>
-    <div class="seg" role="group" aria-label="Mode"><button data-act="recmode" data-v="stock" aria-pressed="${ui.recMode === "stock"}">Avec mes stocks</button><button data-act="recmode" data-v="inspiration" aria-pressed="${ui.recMode === "inspiration"}">Trouver l’inspiration</button></div>
+    <div class="seg" role="group" aria-label="Mode"><button data-act="recmode" data-v="week" aria-pressed="${ui.recMode === "week"}">Ma semaine</button><button data-act="recmode" data-v="stock" aria-pressed="${ui.recMode === "stock"}">Avec mes stocks</button><button data-act="recmode" data-v="inspiration" aria-pressed="${ui.recMode === "inspiration"}">Inspiration</button></div>
     ${prio.length ? `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">À utiliser en priorité</span>
       <span style="display:flex;flex-wrap:wrap;gap:4px">${prio.map((x) => `<span class="pill" style="background:var(--mint-soft);color:var(--mint-ink)">${esc(x.product.name)} · ${frDate(x.lot.expiry).slice(0, 5)}</span>`).join("")}</span></section>` : ""}
-    <details class="card" style="padding:12px 14px" ${parsed ? "" : "open"}><summary class="t" style="cursor:pointer">Filtres · ${f.portions} pers.${f.theme ? " · " + esc(f.theme) : ""}${f.dishType ? " · " + esc(f.dishType) : ""}${f.maxTime ? ` · ≤ ${f.maxTime} min` : ""}</summary>
+    <details class="card" style="padding:12px 14px" ${parsed ? "" : "open"}><summary class="t" style="cursor:pointer">Filtres · ${ui.recMode === "week" ? `${f.days} jours · ${esc(f.meal)} · ` : ""}${f.portions} pers.${f.theme ? " · " + esc(f.theme) : ""}${f.dishType ? " · " + esc(f.dishType) : ""}${f.maxTime ? ` · ≤ ${f.maxTime} min` : ""}</summary>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
         <div class="row-between"><span class="label">Portions</span><div class="qbox" style="padding:2px">
           <button class="round-btn" style="width:36px;height:36px;background:var(--soft);color:var(--ink)" data-act="rf-port" data-v="-1" aria-label="Moins">${I.minus(14)}</button>
           <strong class="h" style="min-width:30px;text-align:center">${f.portions}</strong>
           <button class="round-btn" style="width:36px;height:36px;background:var(--primary);color:var(--primary-ink)" data-act="rf-port" data-v="1" aria-label="Plus">${I.plus(14)}</button></div></div>
+        ${ui.recMode === "week" ? `<span class="label">Nombre de jours</span><div class="chips">${[3, 4, 5, 6, 7].map((n) => chip("days", n, `${n} jours`)).join("")}</div>
+        <span class="label">Repas</span><div class="chips">${["dîner", "déjeuner", "déjeuner et dîner (2 recettes par jour)"].map((m) => chip("meal", m, m.split(" (")[0])).join("")}</div>` : ""}
         <span class="label">Type</span><div class="chips">${chip("dishType", "", "Tous")}${E.DISH_TYPES.map((d) => chip("dishType", d, d)).join("")}</div>
         <span class="label">Thème</span><select class="input" data-rf="theme" aria-label="Thème"><option value="">Libre</option>${E.THEMES.map((t) => `<option ${f.theme === t ? "selected" : ""}>${t}</option>`).join("")}</select>
         <span class="label">Temps total</span><div class="chips">${chip("maxTime", "", "Peu importe")}${[20, 30, 45, 60].map((m) => chip("maxTime", m, `≤ ${m} min`)).join("")}</div>
@@ -1071,13 +1074,14 @@ function viewRecettes() {
       </div></details>
     <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
       <span class="eyebrow">1 · Demander à Claude</span>
-      <span class="s">La demande (stock, dates, filtres) est copiée. Collez-la dans Claude puis envoyez.</span>
-      <button class="cta" data-act="rec-ask">Copier la demande et ouvrir Claude</button>
-      <span class="eyebrow" style="margin-top:4px">2 · Coller la réponse</span>
-      <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button class="out-btn" data-act="rec-clip">Coller</button>
-        <button class="cta" style="height:44px" data-act="rec-read">Lire la réponse</button></div>
+      <span class="s">${ui.recMode === "week" ? `Plakardo prépare la demande (stock, dates, filtres). Dans Claude : collez, envoyez, puis copiez sa réponse avec le bouton Copier.` : "La demande (stock, dates, filtres) est copiée. Collez-la dans Claude, envoyez, puis copiez sa réponse."}</span>
+      <button class="cta" data-act="rec-ask">${ui.recMode === "week" ? "Préparer ma semaine avec Claude" : "Copier la demande et ouvrir Claude"}</button>
+      <span class="eyebrow" style="margin-top:4px">2 · Revenir ici</span>
+      <button class="cta" style="background:var(--ink);color:var(--bg)" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
+      ${ui.recMode === "week" ? `<span class="s">Plakardo range les recettes jour par jour et ajoute ce qui manque à la liste de courses.</span>` : ""}
+      <details><summary class="s" style="cursor:pointer;text-decoration:underline">Coller à la main</summary>
+        <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit;margin-top:8px" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
+        <button class="out-btn" style="width:100%;margin-top:8px" data-act="rec-read">Lire la réponse</button></details>
     </section>
     ${parsed ? `<section style="display:flex;flex-direction:column;gap:10px"><div class="row-between"><h2 class="eyebrow">Propositions (${sorted.length})</h2><button class="link-btn" data-act="rec-clear">Effacer</button></div>
       ${parsed.blocage ? `<div class="card" style="padding:12px"><span class="err">Claude n’a rien trouvé : ${esc(parsed.blocage)}</span><span class="s">Assouplissez un filtre puis redemandez.</span></div>` : ""}
@@ -1094,7 +1098,7 @@ function viewRecette(id) {
   const portions = ui.recPortions[r.id] || r.portions;
   const ings = E.scaleRecipe(r, portions);
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
-  const fav = recipes.some((x) => x.id === r.id);
+  const fav = recipes.some((x) => x.id === r.id && isFav(x));
   const inMenu = (meta.menu?.entries || []).some((e) => e.recipeId === r.id);
   const pr = prefs();
   const allergyHit = (r.allergens || []).filter((a) => (pr.allergies || []).some((x) => a.toLowerCase().includes(x.toLowerCase())));
@@ -1175,9 +1179,9 @@ function cookFromRecipe(r) {
 }
 
 function menuEntries() {
-  return (meta.menu?.entries || []).map((e) => ({ ...e, recipe: recipes.find((r) => r.id === e.recipeId) })).filter((e) => e.recipe);
+  return (meta.menu?.entries || []).map((e, i) => ({ ...e, i, recipe: recipes.find((r) => r.id === e.recipeId) })).filter((e) => e.recipe);
 }
-function setMenu(entries) { store.setMeta("menu", { entries: entries.map(({ recipeId, portions, day }) => ({ recipeId, portions, day: day || "" })) }); }
+function setMenu(entries) { return store.setMeta("menu", { entries: entries.map(({ recipeId, portions, day }) => ({ recipeId, portions, day: day || "" })) }); }
 function viewMenu() {
   const entries = menuEntries();
   const needs = E.computeNeeds(entries.map((e) => ({ recipe: e.recipe, portions: e.portions })), products);
@@ -1188,11 +1192,11 @@ function viewMenu() {
       <span class="s">${L.mode === "suggest" ? "Bientôt vide : à prévoir" : L.mode === "check" ? "Quantité à vérifier" : L.product ? `Besoin ${fmtQ(L.need)} · dispo ${fmtQ(L.avail)} ${esc(L.unit)}` : "Absent du stock"} · ${esc(L.sources.join(", "))}</span></span>
       <strong style="color:var(--warn)">${L.missing ? `${fmtQ(L.missing)} ${esc(L.unit)}` : ""}</strong>${L.suggestion ? `<span class="s"> · ${plural(L.suggestion.packs, "paquet", "paquets")}</span>` : ""}</div>`;
   return `<main class="screen no-nav">${offlineBanner()}
-    <div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Menu</h1><span class="sub">Besoins calculés sans compter deux fois le même stock</span></div></div>
+    <div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Menu de la semaine</h1><span class="sub">Besoins calculés sans compter deux fois le même stock</span></div></div>
     ${entries.length ? `<div class="card list">${entries.map((e, i) => `<div class="list-row">${vignette(e.recipe, 40)}
-      <a class="grow" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${esc(e.recipe.title)}</span><span class="s">${plural(e.portions, "portion", "portions")}</span></a>
-      <button class="sc-x" data-act="menu-port" data-i="${i}" data-v="-1" aria-label="Moins">−</button><button class="sc-x" data-act="menu-port" data-i="${i}" data-v="1" aria-label="Plus">+</button>
-      <button class="sc-x" data-act="menu-del" data-i="${i}" aria-label="Retirer du menu">×</button></div>`).join("")}</div>`
+      <a class="grow" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit">${e.day ? `<span class="eyebrow">${esc(e.day)}</span>` : ""}<span class="t">${esc(e.recipe.title)}</span><span class="s">${plural(e.portions, "portion", "portions")}</span></a>
+      <button class="sc-x" data-act="menu-port" data-i="${e.i}" data-v="-1" aria-label="Moins">−</button><button class="sc-x" data-act="menu-port" data-i="${e.i}" data-v="1" aria-label="Plus">+</button>
+      <button class="sc-x" data-act="menu-del" data-i="${e.i}" aria-label="Retirer du menu">×</button></div>`).join("")}</div>`
       : `<p class="empty-state">Menu vide. Depuis une recette, touchez « Ajouter au menu ».</p>`}
     ${entries.length ? `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">À acheter (${buy.length})</h2>
       ${buy.length ? `<div class="card list">${buy.map(needRow).join("")}</div>` : `<p class="s">Tout est en stock${okN ? ` (${plural(okN, "ingrédient", "ingrédients")})` : ""}.</p>`}
@@ -1337,6 +1341,42 @@ async function lotSheetGo() {
   if (r) { ui.lotSheet = null; render(); }
 }
 
+async function readRecipes() {
+  const res = E.parseRecipes(ui.recPaste, products);
+  if (!res.recipes.length && !res.blocage) {
+    showToast(/recettes/.test(ui.recPaste) ? (res.errors[0] || "Réponse illisible") : "Le presse-papiers ne contient pas la réponse de Claude : copiez-la d’abord");
+    if (res.errors.length > 1) ui.recParsed = res;
+    render(); return;
+  }
+  ui.recPaste = "";
+  if (ui.recMode === "week" && res.recipes.length) { await applyWeek(res); return; }
+  ui.recParsed = res; saveParsed(); render();
+}
+// Menu de la semaine : recettes enregistrées, menu remplacé, manquants ajoutés aux courses.
+async function applyWeek(res) {
+  if (!canWrite()) return;
+  ui.busy = true; render();
+  try {
+    const order = E.weekDays(7);
+    const port = ui.recFilters.portions || 2;
+    const list = [...res.recipes].sort((x, y) => (order.indexOf(x.day) + 9) % 9 - (order.indexOf(y.day) + 9) % 9);
+    const keep = new Set(recipes.filter(isFav).map((r) => r.id));
+    const old = (meta.menu?.entries || []).map((e2) => e2.recipeId).filter((id) => !keep.has(id));
+    const entries = [];
+    for (const r of list) {
+      const id = await store.saveRecipe({ ...r, id: undefined, kind: "plan", savedBy: me(), savedAt: Date.now() });
+      entries.push({ recipeId: id, portions: port, day: r.day || "", recipe: { ...r, id } });
+    }
+    await setMenu(entries);
+    for (const id of old) store.deleteRecipe(id);
+    const needs = E.computeNeeds(entries.map((e2) => ({ recipe: e2.recipe, portions: e2.portions })), products);
+    const n = addNeedsToShopping(needs, "Menu");
+    ui.recParsed = res.errors.length ? { recipes: [], errors: res.errors, blocage: null } : null; saveParsed();
+    showToast(`Menu prêt : ${plural(entries.length, "recette", "recettes")}${n ? ` · ${plural(n, "article ajouté", "articles ajoutés")} aux courses` : ""}`);
+    go("#/menu");
+  } catch (e) { showToast(e?.message || "Impossible d’enregistrer le menu"); }
+  finally { ui.busy = false; render(); }
+}
 // ───────────────────────── Rendu ─────────────────────────
 function render() {
   const active = document.activeElement;
@@ -1475,7 +1515,7 @@ app.addEventListener("click", (e) => {
     case "prep-load": { const r = recipes.find((x) => x.id === v); if (r) { ui.cook = []; r.ingredients.forEach((g) => { if (find(g.productId)) cookAdd(g.productId, g.qty ?? undefined); }); ui.cookLabel = r.title; render(); } break; }
     case "op-undo": undoOp(v); break;
     case "recmode": ui.recMode = v; render(); break;
-    case "rf": ui.recFilters[field] = field === "maxTime" && v ? Number(v) : v; render(); break;
+    case "rf": ui.recFilters[field] = (field === "maxTime" || field === "days") && v ? Number(v) : v; render(); break;
     case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
     case "rf-gaspi": ui.recFilters.antigaspi = ui.recFilters.antigaspi === false; render(); break;
     case "rec-ask": {
@@ -1486,18 +1526,23 @@ app.addEventListener("click", (e) => {
       setTimeout(() => window.open("https://claude.ai/new", "_blank"), 150);
       break;
     }
-    case "rec-clip": navigator.clipboard?.readText?.().then((txt) => { ui.recPaste = txt || ""; render(); }).catch(() => { showToast("Collez avec un appui long dans la zone"); render(); }); break;
-    case "rec-read": {
-      const res = E.parseRecipes(ui.recPaste, products);
-      if (!res.recipes.length && !res.blocage) { showToast(res.errors[0] || "Réponse illisible"); ui.recParsed = res.errors.length > 1 ? res : ui.recParsed; render(); break; }
-      ui.recParsed = res; ui.recPaste = ""; saveParsed(); render(); break;
-    }
+    case "rec-clip":
+      if (!navigator.clipboard?.readText) { showToast("Collage automatique indisponible : utilisez « Coller à la main »"); render(); break; }
+      navigator.clipboard.readText().then((txt) => { ui.recPaste = txt || ""; readRecipes(); }).catch(() => { showToast("Autorisez le collage, ou utilisez « Coller à la main »"); render(); });
+      break;
+    case "rec-read": readRecipes(); break;
     case "rec-clear": ui.recParsed = null; saveParsed(); render(); break;
     case "rec-port": { const r = findRecipe(id); if (r) { ui.recPortions[r.id] = Math.max(1, Math.min(30, (ui.recPortions[r.id] || r.portions) + Number(v))); render(); } break; }
     case "rec-fav": {
       const r = findRecipe(v); if (!r) break;
-      if (recipes.some((x) => x.id === r.id)) { store.deleteRecipe(r.id); showToast("Retirée des favoris"); render(); }
+      const saved = recipes.find((x) => x.id === r.id);
+      const inMenu = (meta.menu?.entries || []).some((e2) => e2.recipeId === r.id);
+      if (saved && isFav(saved)) {
+        if (inMenu) store.saveRecipe({ ...saved, kind: "plan" }); else store.deleteRecipe(r.id);
+        showToast("Retirée des favoris");
+      } else if (saved) { store.saveRecipe({ ...saved, kind: "recipe" }); showToast("Ajoutée aux favoris"); }
       else ensureSaved(r).then(() => { showToast("Ajoutée aux favoris"); render(); });
+      render();
       break;
     }
     case "rec-shop": {
