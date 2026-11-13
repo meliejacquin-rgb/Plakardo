@@ -65,7 +65,7 @@ function dateLabel(p) {
 const parseQ = (v) => { const n = Number(String(v ?? "").replace(",", ".").trim()); return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0; };
 const fmtQ = (n) => String(Math.round((Number(n) || 0) * 1000) / 1000).replace(".", ",");
 const qty = (p) => parseQ(p.quantity);
-const isLow = (p) => qty(p) <= (Number(p.minQuantity) || 0);
+const isLow = (p) => p.lowAlert !== false && qty(p) <= parseQ(p.minQuantity);
 const isUrgent = (p) => qty(p) > 0 && p.expiry && daysUntil(p.expiry) <= 7;
 const unitLabel = (p, q = qty(p)) => (q > 1 ? PLURAL[p.unit] || p.unit : p.unit) || "";
 const byName = (a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" });
@@ -136,10 +136,10 @@ function openForm(r) {
   if (r.name === "produit") {
     const p = find(r.arg);
     if (!p) { ui.form = null; return; }
-    ui.form = { id: p.id, name: p.name || "", detail: p.detail || "", categoryId: p.categoryId || "alim", quantity: qty(p), unit: p.unit || "pièce", expiry: p.expiry || "", minQuantity: Number(p.minQuantity) || 0 };
+    ui.form = { id: p.id, name: p.name || "", detail: p.detail || "", categoryId: p.categoryId || "alim", quantity: qty(p), unit: p.unit || "pièce", expiry: p.expiry || "", minQuantity: parseQ(p.minQuantity), lowAlert: p.lowAlert !== false };
   } else {
     const cat = CAT[r.params.get("cat")] ? r.params.get("cat") : "alim";
-    ui.form = { name: "", detail: "", categoryId: cat, quantity: 1, unit: cat === "chat" ? "boîte" : "pièce", expiry: "", minQuantity: 1 };
+    ui.form = { name: "", detail: "", categoryId: cat, quantity: 1, unit: cat === "chat" ? "boîte" : "pièce", expiry: "", minQuantity: 1, lowAlert: true };
   }
 }
 
@@ -155,6 +155,7 @@ async function saveForm() {
     unit: f.unit,
     expiry: f.expiry || null,
     minQuantity: parseQ(f.minQuantity),
+    lowAlert: !!f.lowAlert,
   };
   ui.busy = true;
   render();
@@ -315,7 +316,7 @@ function itemHtml(p) {
   const dateTag = p.expiry
     ? `<span class="pill ${d <= 7 ? "warn" : "soft"}">${dateLabel(p)}</span>`
     : `<span class="pill soft">Sans date</span>`;
-  const lowTag = isLow(p) ? `<span class="pill low">${q === 0 ? "Épuisé" : "Stock bas"}</span>` : "";
+  const lowTag = isLow(p) ? `<span class="pill low">${q === 0 ? "Épuisé" : "Stock bas"}</span>` : q === 0 ? `<span class="pill soft">Épuisé</span>` : "";
   return `<div class="item${ui.swiped === p.id ? " swiped" : ""}${q === 0 ? " empty" : ""}" data-swipe="${p.id}">
     <div class="actions">
       <button class="minus" data-act="dec" data-id="${p.id}">−1</button>
@@ -406,9 +407,13 @@ function viewForm(r) {
       <label class="sr" for="f-date">Choisir une date</label>
       <input id="f-date" class="input" type="date" data-field="expiry" value="${esc(f.expiry)}">
     </div>
-    <div class="panel row-between">
-      <span style="display:flex;flex-direction:column;gap:2px"><span class="t">M’alerter quand il en reste</span><span class="s">Passe alors en « Bientôt épuisé »</span></span>
-      ${stepper("minQuantity", f.minQuantity, "Seuil")}
+    <div class="card" style="overflow:hidden">
+      <button type="button" class="toggle" data-act="falert" aria-pressed="${!!f.lowAlert}">
+        <span style="display:flex;flex-direction:column;gap:2px"><span class="t">Alerte de stock bas</span>
+          <span class="s">${f.lowAlert ? "Passe en « Bientôt épuisé » et dans la liste de courses" : "Aucune alerte, même à 0"}</span></span>
+        <span class="switch"></span>
+      </button>
+      ${f.lowAlert ? `<div class="row-between" style="padding:8px 8px 10px 16px;border-top:1px solid var(--soft)"><span class="t">M’alerter quand il en reste</span>${stepper("minQuantity", f.minQuantity, "Seuil")}</div>` : ""}
     </div>
     ${ui.formError ? `<p class="err" role="alert">${esc(ui.formError)}</p>` : ""}
     ${f.id ? `<button type="button" class="danger-btn${ui.deleteArmed ? " armed" : ""}" data-act="delete">${ui.deleteArmed ? "Touchez encore pour supprimer" : "Supprimer ce produit"}</button>` : ""}
@@ -572,6 +577,7 @@ app.addEventListener("click", (e) => {
       const el = document.getElementById(`f-${field}`);
       if (el) el.value = fmtQ(n); else render();
     } break;
+    case "falert": if (ui.form) { ui.form.lowAlert = !ui.form.lowAlert; render(); } break;
     case "save": saveForm(); break;
     case "delete": deleteProduct(); break;
     case "theme": localStorage.setItem("plakardo-theme", v); applyPrefs(); render(); break;
