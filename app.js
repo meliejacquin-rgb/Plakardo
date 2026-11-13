@@ -12,7 +12,8 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.2.5";
+const APP_VERSION = "2.3.0";
+const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
 const PLURAL = { pièce: "pièces", boîte: "boîtes", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", g: "g", kg: "kg", ml: "ml", L: "L" };
@@ -1047,7 +1048,7 @@ function viewRecettes() {
   const f = ui.recFilters;
   const parsed = loadParsed();
   const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
-  const favs = recipes.filter(isFav);
+
   const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
   const sorted = parsed ? [...parsed.recipes].sort((a, b) => E.scoreRecipe(b, products).score - E.scoreRecipe(a, products).score) : [];
   return `<main class="screen">${offlineBanner()}
@@ -1075,27 +1076,87 @@ function viewRecettes() {
         ${prefs().allergies?.length ? `<span class="s">Allergies exclues : ${esc(listTxt(prefs().allergies))} · <a href="#/profil">modifier</a></span>` : `<span class="s">Allergies, refus, équipements : <a href="#/profil">à régler dans Profil</a></span>`}
       </div></details>
     <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
-      <span class="eyebrow">1 · Demander à Claude</span>
-      <span class="s">${ui.recMode === "week" ? `Plakardo prépare la demande (stock, dates, filtres). Dans Claude : collez, envoyez, puis copiez sa réponse avec le bouton Copier.` : "La demande (stock, dates, filtres) est copiée. Collez-la dans Claude, envoyez, puis copiez sa réponse."}</span>
-      <button class="cta" data-act="rec-ask">${ui.recMode === "week" ? "Préparer ma semaine avec Claude" : "Copier la demande et ouvrir Claude"}</button>
-      <span class="eyebrow" style="margin-top:4px">2 · Revenir ici</span>
-      <button class="cta" style="background:var(--ink);color:var(--bg)" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
-      ${ui.recMode === "week" ? `<span class="s">Plakardo range les recettes jour par jour et ajoute ce qui manque à la liste de courses.</span>` : ""}
+      <span class="eyebrow">Avec Claude, sans copier sa réponse</span>
+      <span class="s">1. Touchez le bouton : la demande est copiée et la page « Plakardo · Cuisine » s’ouvre dans Claude.<br>2. Collez-la, touchez « Générer », cochez vos recettes.<br>3. Touchez « Envoyer dans Plakardo » : ${ui.recMode === "week" ? "menu, recettes et courses arrivent ici tout seuls." : "les recettes arrivent dans « Mes recettes »."}</span>
+      <a class="cta" href="${CUISINE_URL}" target="_blank" rel="noopener" data-act="rec-ask">${ui.recMode === "week" ? "Préparer ma semaine avec Claude" : "Trouver des recettes avec Claude"}</a>
+      <details ${ui.recManual ? "open" : ""}><summary class="s" style="cursor:pointer;text-decoration:underline">Ancienne méthode : conversation Claude + copier-coller</summary>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <button class="out-btn" data-act="rec-ask-chat">Copier la demande et ouvrir Claude</button>
+        <button class="out-btn" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
       ${ui.recDiag ? `<div class="card" style="padding:10px 12px;border-color:var(--warn);display:flex;flex-direction:column;gap:4px">
         <span class="err">Lecture impossible</span><span class="s">${esc(ui.recDiag.err)}</span>
         <span class="s" style="font-family:monospace;font-size:11px;word-break:break-all">Reçu : ${ui.recDiag.len} caractères · json ${ui.recDiag.hasJson ? "oui" : "non"} · bloc ${ui.recDiag.hasFence ? "oui" : "non"}<br>Début : ${esc(ui.recDiag.head)}<br>Fin : ${esc(ui.recDiag.tail)}</span>
         <span class="s">Faites une capture de cet encadré pour le support.</span></div>` : ""}
-      <details ${ui.recManual ? "open" : ""}><summary class="s" style="cursor:pointer;text-decoration:underline">Coller à la main</summary>
         <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit;margin-top:8px" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
-        <button class="out-btn" style="width:100%;margin-top:8px" data-act="rec-read">Lire la réponse</button></details>
+        <button class="out-btn" style="width:100%" data-act="rec-read">Lire la réponse</button></div></details>
     </section>
     ${parsed ? `<section style="display:flex;flex-direction:column;gap:10px"><div class="row-between"><h2 class="eyebrow">Propositions (${sorted.length})</h2><button class="link-btn" data-act="rec-clear">Effacer</button></div>
       ${parsed.blocage ? `<div class="card" style="padding:12px"><span class="err">Claude n’a rien trouvé : ${esc(parsed.blocage)}</span><span class="s">Assouplissez un filtre puis redemandez.</span></div>` : ""}
       ${(parsed.errors || []).map((e) => `<p class="s warn">${esc(e)}</p>`).join("")}
       ${sorted.map(recipeCard).join("")}
       <p class="s">Classement calculé par Plakardo (dates, disponibilité). Dessins faits par Claude, à titre d’illustration.</p></section>` : ""}
-    ${favs.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">Favoris (${favs.length})</h2>${favs.map(recipeCard).join("")}</section>` : ""}
+    ${mesRecettes()}
   </main>${nav("recettes")}`;
+}
+
+// « Mes recettes » : menu en cours + toutes les recettes gardées (menu et favoris).
+function mesRecettes() {
+  const menu = menuEntries();
+  const mine = recipes.filter((r) => r.kind !== "prep").sort((x, y) => (isFav(y) - isFav(x)) || (y.savedAt?.seconds || y.savedAt || 0) - (x.savedAt?.seconds || x.savedAt || 0));
+  if (!menu.length && !mine.length) return `<section class="card" style="padding:14px"><span class="eyebrow">Mes recettes</span><span class="s">Les recettes envoyées depuis Claude et vos favoris s’afficheront ici.</span></section>`;
+  return `<section style="display:flex;flex-direction:column;gap:10px">
+    ${menu.length ? `<a class="card shop-entry" href="#/menu"><span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 22)}</span>
+      <span class="grow"><span class="t">Menu de la semaine</span><span class="s">${esc(menu.map((e) => e.day ? `${e.day.slice(0, 3)}. ${e.recipe.title}` : e.recipe.title).slice(0, 3).join(" · "))}${menu.length > 3 ? ` · +${menu.length - 3}` : ""}</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>` : ""}
+    <h2 class="eyebrow">Mes recettes (${mine.length})</h2>
+    ${mine.map(recipeCard).join("")}
+  </section>`;
+}
+
+// ---- Import depuis la page « Plakardo · Cuisine » (lien #/import?d=…) ----
+function b64urlToBytes(s) {
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+}
+async function decodePayload(d) {
+  const kind = d[0], bytes = b64urlToBytes(d.slice(1));
+  let txt;
+  if (kind === "z") txt = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+  else txt = new TextDecoder().decode(bytes);
+  return JSON.parse(txt);
+}
+async function runImport(d) {
+  ui.imp = { state: "busy" }; render();
+  try {
+    const p = await decodePayload(d);
+    const res = E.parseRecipes("```json\n" + JSON.stringify({ recettes: p.recettes || [], blocage: null }) + "\n```", products);
+    if (!res.recipes.length) throw new Error(res.errors[0] || "Aucune recette lisible dans le lien.");
+    if (p.mode === "week") {
+      ui.recFilters.portions = p.portions || ui.recFilters.portions;
+      ui.recMode = "week";
+      await applyWeek(res);
+      ui.imp = { state: "done", week: true, n: res.recipes.length, errors: res.errors };
+    } else {
+      for (const r of res.recipes) await store.saveRecipe({ ...r, id: undefined, kind: "recipe", savedBy: me(), savedAt: Date.now() });
+      ui.imp = { state: "done", week: false, n: res.recipes.length, errors: res.errors };
+    }
+  } catch (e) {
+    ui.imp = { state: "error", msg: e?.message || "Lien illisible." };
+  }
+  render();
+}
+function viewImport(r) {
+  const d = r.params.get("d") || "";
+  if (d && ui.impKey !== d && products.length + 1 > 0 && loaded) { ui.impKey = d; setTimeout(() => runImport(d), 0); }
+  const s = ui.imp || { state: "busy" };
+  return `<main class="screen no-nav" style="justify-content:center;min-height:80vh">
+    <div class="card" style="padding:22px;display:flex;flex-direction:column;gap:12px;text-align:center">
+      ${s.state === "busy" ? `<h1 style="font-size:24px">Réception des recettes…</h1><p class="s">Un instant.</p>`
+      : s.state === "error" ? `<h1 style="font-size:24px">Import impossible</h1><p class="err">${esc(s.msg)}</p><a class="cta" href="#/recettes">Retour aux recettes</a>`
+      : `<h1 style="font-size:24px">${s.week ? "Menu de la semaine reçu" : plural(s.n, "recette reçue", "recettes reçues")}</h1>
+         <p class="s">${s.week ? `${plural(s.n, "recette rangée", "recettes rangées")} jour par jour, manquants ajoutés à la liste de courses.` : "Elles sont dans « Mes recettes »."}</p>
+         ${(s.errors || []).map((x) => `<p class="s warn">${esc(x)}</p>`).join("")}
+         ${s.week ? `<a class="cta" href="#/menu">Voir le menu</a><a class="out-btn" href="#/courses" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Voir les courses</a>` : `<a class="cta" href="#/recettes">Voir mes recettes</a>`}`}
+    </div></main>`;
 }
 
 function viewRecette(id) {
@@ -1383,8 +1444,8 @@ async function applyWeek(res) {
     const n = addNeedsToShopping(needs, "Menu");
     ui.recParsed = res.errors.length ? { recipes: [], errors: res.errors, blocage: null } : null; saveParsed();
     showToast(`Menu prêt : ${plural(entries.length, "recette", "recettes")}${n ? ` · ${plural(n, "article ajouté", "articles ajoutés")} aux courses` : ""}`);
-    go("#/menu");
-  } catch (e) { showToast(e?.message || "Impossible d’enregistrer le menu"); }
+    if (route().name !== "import") go("#/menu");
+  } catch (e) { showToast(e?.message || "Impossible d’enregistrer le menu"); if (route().name === "import") throw e; }
   finally { ui.busy = false; render(); }
 }
 // ───────────────────────── Rendu ─────────────────────────
@@ -1410,6 +1471,7 @@ function render() {
       case "recettes": html = viewRecettes(); break;
       case "recette": html = viewRecette(r.arg); break;
       case "menu": html = viewMenu(); break;
+      case "import": html = viewImport(r); break;
       case "placard": html = viewPlacard(r.arg); break;
       case "ajout":
       case "produit": html = viewForm(r); break;
@@ -1528,12 +1590,13 @@ app.addEventListener("click", (e) => {
     case "rf": ui.recFilters[field] = (field === "maxTime" || field === "days") && v ? Number(v) : v; render(); break;
     case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
     case "rf-gaspi": ui.recFilters.antigaspi = ui.recFilters.antigaspi === false; render(); break;
-    case "rec-ask": {
+    case "rec-ask": case "rec-ask-chat": {
       const text = E.buildPrompt({ products, locations: locations(), filters: ui.recFilters, prefs: prefs(), mode: ui.recMode });
-      const done = () => { showToast("Demande copiée : collez-la dans Claude"); render(); };
+      const viaChat = act === "rec-ask-chat";
+      const done = () => { showToast(viaChat ? "Demande copiée : collez-la dans Claude" : "Demande copiée : collez-la dans la page Plakardo · Cuisine"); render(); };
       const fallback = () => { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch {} ta.remove(); };
       (navigator.clipboard ? navigator.clipboard.writeText(text).catch(fallback) : Promise.resolve(fallback())).then(done);
-      setTimeout(() => window.open("https://claude.ai/new", "_blank"), 150);
+      if (viaChat) setTimeout(() => window.open("https://claude.ai/new", "_blank"), 150);
       break;
     }
     case "rec-clip":
