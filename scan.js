@@ -28,7 +28,9 @@ const pad = (n) => String(n).padStart(2, "0");
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fromToday = ({ days = 0, months = 0, years = 0 }) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setFullYear(d.getFullYear() + years, d.getMonth() + months, d.getDate() + days); return iso(d); };
 const frDate = (v) => { const [y, m, d] = v.split("-"); return `${d}/${m}/${y}`; };
-const qtyOf = (p) => Math.max(0, Number(p?.quantity) || 0);
+const parseQ = (v) => { const n = Number(String(v ?? "").replace(",", ".").trim()); return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0; };
+const fmtQ = (n) => String(Math.round((Number(n) || 0) * 1000) / 1000).replace(".", ",");
+const qtyOf = (p) => parseQ(p?.quantity);
 const ICON = {
   close: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   minus: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>',
@@ -183,7 +185,7 @@ async function confirm() {
   const { cur, form } = s;
   if (!cur || !form) return;
   const by = ctx.me();
-  const q = Math.max(1, Number(form.quantity) || 1);
+  const q = parseQ(form.quantity) || 1;
   if (cur.product) {
     const p = cur.product;
     if (s.mode === "remove") {
@@ -206,7 +208,7 @@ async function confirm() {
     ctx.store.updateProduct(twin.id, { barcode: cur.info.key, ...(form.expiry && (!twin.expiry || form.expiry < twin.expiry) ? { expiry: form.expiry } : {}) });
     ctx.store.changeQty(twin.id, q, by);
   } else {
-    await ctx.store.addProduct({ ...data, quantity: q, expiry: form.expiry || null, minQuantity: Number(form.minQuantity) || 0, barcode: cur.info.key, updatedBy: by });
+    await ctx.store.addProduct({ ...data, quantity: q, expiry: form.expiry || null, minQuantity: parseQ(form.minQuantity), barcode: cur.info.key, updatedBy: by });
   }
   ctx.store.saveBarcode(cur.info.key, data);
   resume(`${name} +${q} · mémorisé`);
@@ -225,7 +227,13 @@ function onClick(e) {
     case "confirm": confirm(); break;
     case "to-add": s.mode = "add"; handle(s.cur.info); break;
     case "set": if (s.form) { s.form[f] = v; render(); } break;
-    case "step": if (s.form) { s.form[f] = Math.max(f === "minQuantity" ? 0 : 1, (Number(s.form[f]) || 0) + Number(v)); render(); } break;
+    case "step": if (s.form) {
+      const n = Math.max(f === "minQuantity" ? 0 : 1, parseQ(s.form[f]) + Number(v));
+      s.form[f] = n;
+      const el = uiBox.querySelector(`#sc-${f}`);
+      if (el) el.value = fmtQ(n);
+      updateCta();
+    } break;
   }
 }
 
@@ -234,14 +242,31 @@ function onInput(e) {
   if (t.dataset.sf && s.form) {
     s.form[t.dataset.sf] = t.value;
     if (t.type === "date") render();
+    else if (t.dataset.sf === "quantity") updateCta();
   }
+}
+
+function ctaLabel() {
+  const { cur, form } = s;
+  if (!cur || !form) return "";
+  const q = parseQ(form.quantity) || 1;
+  if (!cur.product) return "Ajouter au placard";
+  const p = cur.product;
+  const unit = (n) => (n > 1 ? (ctx.plural[p.unit] || p.unit) : p.unit) || "";
+  if (s.mode === "remove") { const n = Math.min(q, qtyOf(p)); return `Retirer ${fmtQ(n)} ${unit(n)}`; }
+  return `Ajouter ${fmtQ(q)} ${unit(q)}`;
+}
+function updateCta() {
+  const b = uiBox.querySelector('[data-s="confirm"]');
+  if (b) b.textContent = ctaLabel();
 }
 
 // ───────────────────────── Affichage ─────────────────────────
 function stepperHtml(field, value, label) {
   return `<div class="sc-step">
     <button type="button" data-s="step" data-f="${field}" data-v="-1" aria-label="${label} moins">${ICON.minus}</button>
-    <span>${value}</span>
+    <label class="sr" for="sc-${field}">${label}</label>
+    <input id="sc-${field}" class="qinput" type="text" inputmode="decimal" autocomplete="off" data-sf="${field}" value="${fmtQ(value)}">
     <button type="button" class="on" data-s="step" data-f="${field}" data-v="1" aria-label="${label} plus">${ICON.plus}</button>
   </div>`;
 }
@@ -269,18 +294,18 @@ function sheetHtml() {
     const stock = qtyOf(p);
     const cat = ctx.cats.find((c) => c.id === p.categoryId);
     const removing = s.mode === "remove";
-    const q = Number(form.quantity) || 1;
+    const q = parseQ(form.quantity) || 1;
     return `<div class="sc-sheet"><div class="sc-handle"></div>
       <div class="sc-head">
         <span class="cat-ico c-${p.categoryId}">${ctx.catIcon(p.categoryId)}</span>
         <div class="sc-title"><span class="sc-ok">${ICON.check} Dans vos placards</span>
           <strong>${esc(p.name)}</strong>
-          <span class="sub">${cat ? cat.name : ""}${p.detail ? " · " + esc(p.detail) : ""} · ${stock} en stock</span></div>
+          <span class="sub">${cat ? cat.name : ""}${p.detail ? " · " + esc(p.detail) : ""} · ${fmtQ(stock)} en stock</span></div>
       </div>
       <div class="sc-row"><span class="sc-label">${removing ? "Combien en retirer ?" : "Combien en ajouter ?"}</span>${stepperHtml("quantity", q, "Quantité")}</div>
       ${removing ? (stock === 0 ? `<p class="sc-note">Ce produit est déjà à 0.</p>` : "") : dateHtml(form, "Inchangée")}
       ${info.lot ? `<p class="sc-note">Lot ${esc(info.lot)}${info.expiry ? " · date lue sur le code carré" : ""}</p>` : ""}
-      <button class="cta ${removing ? "danger" : ""}" data-s="confirm" ${removing && stock === 0 ? "disabled" : ""}>${removing ? `Retirer ${Math.min(q, stock)} ${esc(unitOf(p, Math.min(q, stock)))}` : `Ajouter ${q} ${esc(unitOf(p, q))}`}</button>
+      <button class="cta ${removing ? "danger" : ""}" data-s="confirm" ${removing && stock === 0 ? "disabled" : ""}>${esc(ctaLabel())}</button>
       <button class="link-btn" data-s="cancel">Scanner autre chose</button>
     </div>`;
   }
@@ -331,9 +356,13 @@ function render() {
       <div class="sc-bottom">${s.status ? `<span class="sc-status">${ICON.check} ${esc(s.status)}</span>` : ""}
         <button class="sc-manual" data-s="manual">Saisir à la main</button></div>`;
   }
+  const prevSheet = uiBox.querySelector(".sc-sheet");
+  const keep = prevSheet ? prevSheet.scrollTop : 0;
   uiBox.innerHTML = `<div class="sc-top">
       <button class="sc-round" data-s="close" aria-label="Fermer le scanner">${ICON.close}</button>
       <div class="sc-seg" role="group" aria-label="Mode">${seg("add", "Ajouter")}${seg("remove", "Retirer")}</div>
       <span style="width:44px"></span>
     </div>${body}`;
+  const sheet = uiBox.querySelector(".sc-sheet");
+  if (sheet && keep) sheet.scrollTop = keep;
 }

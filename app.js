@@ -11,8 +11,8 @@ const CATS = [
   { id: "chat", name: "Chat" },
 ];
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
-const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "kg", "L"];
-const PLURAL = { pièce: "pièces", boîte: "boîtes", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", kg: "kg", L: "L" };
+const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
+const PLURAL = { pièce: "pièces", boîte: "boîtes", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", g: "g", kg: "kg", ml: "ml", L: "L" };
 
 const svg = (body, size = 24, sw = 1.8) =>
   `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
@@ -62,7 +62,9 @@ function dateLabel(p) {
   const [y, m] = p.expiry.split("-");
   return `${kind} ${m}/${y}`;
 }
-const qty = (p) => Math.max(0, Number(p.quantity) || 0);
+const parseQ = (v) => { const n = Number(String(v ?? "").replace(",", ".").trim()); return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0; };
+const fmtQ = (n) => String(Math.round((Number(n) || 0) * 1000) / 1000).replace(".", ",");
+const qty = (p) => parseQ(p.quantity);
 const isLow = (p) => qty(p) <= (Number(p.minQuantity) || 0);
 const isUrgent = (p) => qty(p) > 0 && p.expiry && daysUntil(p.expiry) <= 7;
 const unitLabel = (p, q = qty(p)) => (q > 1 ? PLURAL[p.unit] || p.unit : p.unit) || "";
@@ -152,20 +154,20 @@ async function saveForm() {
     categoryId: f.categoryId,
     unit: f.unit,
     expiry: f.expiry || null,
-    minQuantity: Math.max(0, Number(f.minQuantity) || 0),
+    minQuantity: parseQ(f.minQuantity),
   };
   ui.busy = true;
   render();
   try {
     if (f.id) {
       const p = find(f.id);
-      const delta = Math.max(0, Number(f.quantity) || 0) - (p ? qty(p) : 0);
+      const delta = Math.round((parseQ(f.quantity) - (p ? qty(p) : 0)) * 1000) / 1000;
       store.updateProduct(f.id, { ...data, updatedBy: me() });
       if (delta) store.changeQty(f.id, delta, me());
       showToast(`${name} enregistré`);
     } else {
       const twin = products.find((p) => p.categoryId === f.categoryId && p.name.toLowerCase() === name.toLowerCase());
-      const q = Math.max(0, Number(f.quantity) || 0);
+      const q = parseQ(f.quantity);
       if (twin) {
         // Déjà dans le placard : on ajoute au stock et on garde la date la plus proche.
         const nearest = [twin.expiry, data.expiry].filter(Boolean).sort()[0] || null;
@@ -241,7 +243,7 @@ function productRowCompact(p) {
     <span class="cat-ico sm c-${p.categoryId}">${catIcon(p.categoryId, 20)}</span>
     <a class="grow" href="#/produit/${p.id}" style="text-decoration:none;color:inherit">
       <span class="t">${esc(p.name)}</span>
-      <span class="s">${CAT[p.categoryId]?.name || ""} · ${qty(p)} ${esc(unitLabel(p))}</span>
+      <span class="s">${CAT[p.categoryId]?.name || ""} · ${fmtQ(qty(p))} ${esc(unitLabel(p))}</span>
     </a>
     <button class="round-btn" data-act="inc" data-id="${p.id}" aria-label="Ajouter un ${esc(p.name)}">${I.plus(20)}</button>
   </div>`;
@@ -328,7 +330,7 @@ function itemHtml(p) {
       <div class="stepper">
         <div class="box">
           <button class="dec" data-act="dec" data-id="${p.id}" aria-label="Retirer un ${esc(p.name)}">${I.minus(18)}</button>
-          <span class="q">${q}</span>
+          <button class="q" data-act="open" data-id="${p.id}" aria-label="Saisir la quantité de ${esc(p.name)}">${fmtQ(q)}</button>
           <button class="inc" data-act="inc" data-id="${p.id}" aria-label="Ajouter un ${esc(p.name)}">${I.plus(18)}</button>
         </div>
         <span class="u">${esc(unitLabel(p))}</span>
@@ -363,9 +365,10 @@ function viewPlacard(catId) {
 }
 
 function stepper(field, value, label) {
-  return `<div class="box" style="display:flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:26px;padding:4px">
+  return `<div class="qbox">
     <button type="button" class="round-btn" style="background:var(--soft);color:var(--ink)" data-act="fstep" data-field="${field}" data-v="-1" aria-label="${label} moins">${I.minus(18)}</button>
-    <span class="h" style="min-width:32px;text-align:center;font-size:22px">${value}</span>
+    <label class="sr" for="f-${field}">${label}</label>
+    <input id="f-${field}" class="qinput" type="text" inputmode="decimal" autocomplete="off" data-field="${field}" value="${fmtQ(value)}">
     <button type="button" class="round-btn" style="background:var(--primary);color:var(--primary-ink)" data-act="fstep" data-field="${field}" data-v="1" aria-label="${label} plus">${I.plus(18)}</button>
   </div>`;
 }
@@ -529,7 +532,9 @@ function render() {
     }
     html += toastHtml();
   }
+  const sy = window.scrollY;
   app.innerHTML = html;
+  if (window.scrollY !== sy) window.scrollTo(0, sy);
   if (user && route().name === "scan") openScanner(); else closeScanner();
   if (focusId) {
     const el = document.getElementById(focusId);
@@ -555,13 +560,18 @@ app.addEventListener("click", (e) => {
     case "dec": change(id, -1); break;
     case "all": { const p = find(id); if (p) change(id, -qty(p)); break; }
     case "open":
-      if (ui.swiped) { ui.swiped = null; render(); } else go(`#/produit/${id}`);
+      if (ui.swiped) { ui.swiped = null; render(); } else { go(`#/produit/${id}`); if (t.classList.contains("q")) setTimeout(() => { const el = document.getElementById("f-quantity"); if (el) { el.focus(); el.select(); } }, 60); }
       break;
     case "filter": ui.filter = v; render(); break;
     case "atab": ui.alertTab = v; render(); break;
     case "undo": { const u = ui.toast?.undo; ui.toast = null; clearTimeout(toastTimer); if (u) u(); render(); break; }
     case "fset": if (ui.form) { ui.form[field] = v; ui.deleteArmed = false; render(); } break;
-    case "fstep": if (ui.form) { ui.form[field] = Math.max(field === "quantity" ? 0 : 0, (Number(ui.form[field]) || 0) + Number(v)); render(); } break;
+    case "fstep": if (ui.form) {
+      const n = Math.max(0, parseQ(ui.form[field]) + Number(v));
+      ui.form[field] = n;
+      const el = document.getElementById(`f-${field}`);
+      if (el) el.value = fmtQ(n); else render();
+    } break;
     case "save": saveForm(); break;
     case "delete": deleteProduct(); break;
     case "theme": localStorage.setItem("plakardo-theme", v); applyPrefs(); render(); break;

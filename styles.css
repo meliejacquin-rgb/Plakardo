@@ -225,3 +225,11 @@ body.scanning { overflow: hidden; }
 .sc-step span { min-width: 36px; text-align: center; font-family: "Nunito", sans-serif; font-weight: 900; font-size: 24px; }
 .cta.danger { background: var(--warn); color: #fff; }
 .sc-sheet .link-btn { align-self: center; }
+
+/* Saisie directe des quantités */
+.qbox { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 26px; padding: 4px; }
+.qinput { width: 64px; height: 44px; border: 1px solid transparent; border-radius: 12px; background: transparent; text-align: center; font-family: "Nunito", sans-serif; font-weight: 900; font-size: 22px; color: var(--ink); outline: none; }
+.qinput:focus { border-color: var(--primary); background: var(--surface); }
+.sc-step .qinput { width: 72px; font-size: 24px; }
+html { overflow-anchor: none; }
+.stepper button.q { width: auto; min-width: 44px; padding: 0 4px; height: 44px; border: 0; background: transparent; color: var(--ink); font-family: "Nunito", sans-serif; font-weight: 900; font-size: 20px; }
