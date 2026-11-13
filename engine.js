@@ -426,6 +426,7 @@ export function scaleRecipe(recipe, portions) {
 // État d'un ingrédient face au stock (REC-05, EXP-03, INV-04/05).
 export function ingredientState(g, byId, now = new Date()) {
   const p = g.productId ? byId[g.productId] : null;
+  if (!p && g.base) return { state: "base", product: null, label: "Placard de base" };
   if (!p) return { state: "missing", product: null, label: g.warn === "ingrédient inventé ou absent du stock" ? "Absent du stock (non reconnu)" : "Manquant" };
   if (isStatusMode(p)) {
     const st = statusOf(p);
@@ -478,6 +479,7 @@ export function computeNeeds(entries, products, now = new Date()) {
     if (!e.recipe) continue;
     for (const g of scaleRecipe(e.recipe, e.portions || e.recipe.portions)) {
       const p = g.productId ? byId[g.productId] : null;
+      if (!p && g.base) continue;
       const key = p ? `p:${p.id}` : `n:${g.name.toLowerCase()}|${unitInfo(g.unit).dim}`;
       let L = lines.get(key);
       if (!L) { L = { key, product: p, name: p ? p.name : g.name, unit: p ? (p.unit || "pièce") : g.unit, need: 0, unknown: false, sources: [] }; lines.set(key, L); }
@@ -548,4 +550,176 @@ export function sanitizeSvg(src) {
   if (s.slice(last).trim() || depth !== 0) return null;
   const res = out.join("");
   return /^<svg[^>]*viewBox=/.test(res) ? res : null;
+}
+
+
+// ───────────────────────── Livre de recettes intégré ─────────────────────────
+export function normTxt(s) {
+  return String(s || "").toLowerCase().replace(/œ/g, "oe").replace(/æ/g, "ae").replace(/ß/g, "ss")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[’']/g, " ").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+// Synonymes (français et allemand : produits achetés en Allemagne) et exclusions.
+const SYN = {
+  "oeuf": ["oeuf", "eier", "ei"], "lait": ["lait", "milch"], "beurre": ["beurre", "butter"],
+  "fromage rape": ["fromage rape", "emmental rape", "gruyere rape", "reibekase", "kase gerieben", "emmental", "gruyere"],
+  "fromage": ["fromage", "kase", "gouda", "emmental", "comte"], "creme fraiche": ["creme fraiche", "creme", "sahne", "schmand", "creme fraiche epaisse"],
+  "creme liquide": ["creme liquide", "sahne", "schlagsahne", "creme fleurette"],
+  "pates": ["pates", "nudeln", "spaghetti", "penne", "fusilli", "macaroni", "coquillettes", "tagliatelle", "pasta", "farfalle"],
+  "spaghetti": ["spaghetti"], "macaroni": ["macaroni"], "riz": ["riz", "reis", "basmati"], "riz rond": ["riz rond", "milchreis"],
+  "farine": ["farine", "mehl"], "sucre": ["sucre", "zucker"], "jambon": ["jambon", "schinken"], "lardons": ["lardons", "speck", "bacon"],
+  "lard fume": ["lard fume", "speck"], "poulet": ["poulet", "hahnchen", "huhn", "chicken", "blanc de poulet", "filet de poulet"],
+  "cuisse de poulet": ["cuisse de poulet", "hahnchenschenkel", "pilon"], "escalope de poulet": ["escalope de poulet", "blanc de poulet", "hahnchenbrust", "hahnchenschnitzel"],
+  "viande hachee": ["viande hachee", "hackfleisch", "hache", "boeuf hache"], "steak hache": ["steak hache", "burger patty"],
+  "tomates concassees": ["tomates concassees", "tomates pelees", "passata", "dosentomaten", "gehackte tomaten", "coulis de tomate", "pulpe de tomate"],
+  "sauce tomate": ["sauce tomate", "tomatensauce", "passata", "coulis de tomate"], "tomate": ["tomate", "tomaten"], "tomates cerises": ["tomates cerises", "cherrytomaten"],
+  "pommes de terre": ["pommes de terre", "pomme de terre", "kartoffeln", "patates"], "patate douce": ["patate douce", "patates douces", "susskartoffel"],
+  "oignon": ["oignon", "zwiebel"], "oignon rouge": ["oignon rouge", "rote zwiebel"], "ail": ["ail", "knoblauch"], "echalote": ["echalote", "schalotte"],
+  "carotte": ["carotte", "karotte", "mohre"], "courgette": ["courgette", "zucchini"], "poivron": ["poivron", "paprikaschote"],
+  "champignons": ["champignon", "champignons", "pilze"], "epinards": ["epinard", "epinards", "spinat"], "saumon": ["saumon", "lachs"],
+  "saumon fume": ["saumon fume", "raucherlachs"], "thon": ["thon", "thunfisch"], "lentilles": ["lentilles", "linsen"], "lentilles corail": ["lentilles corail", "rote linsen"],
+  "pois chiches": ["pois chiches", "kichererbsen"], "haricots rouges": ["haricots rouges", "kidneybohnen"], "haricots blancs": ["haricots blancs", "weisse bohnen"],
+  "haricots verts": ["haricots verts", "grune bohnen"], "petits pois": ["petits pois", "erbsen"], "mais": ["mais"], "pomme": ["pomme", "apfel", "aepfel"],
+  "banane": ["banane"], "citron": ["citron", "zitrone"], "citron vert": ["citron vert", "limette"], "yaourt": ["yaourt", "yogourt", "joghurt", "skyr"],
+  "salade": ["salade", "laitue", "salat", "batavia"], "lait de coco": ["lait de coco", "kokosmilch"], "nouilles": ["nouilles", "mie nudeln", "ramen", "udon"],
+  "nouilles de riz": ["nouilles de riz", "reisnudeln"], "semoule": ["semoule", "couscous", "grieß", "griess"], "chapelure": ["chapelure", "paniermehl"],
+  "pain": ["pain", "brot", "baguette"], "pain de mie": ["pain de mie", "toastbrot", "toast"], "pate brisee": ["pate brisee", "murbeteig"],
+  "pate a pizza": ["pate a pizza", "pizzateig"], "pate feuilletee": ["pate feuilletee", "blatterteig"], "fromage blanc": ["fromage blanc", "quark"],
+  "chevre": ["chevre", "ziegenkase"], "saucisse": ["saucisse", "wurst", "wurstchen", "knacki", "chipolata", "merguez", "bratwurst"],
+  "chocolat": ["chocolat", "schokolade"], "miel": ["miel", "honig"], "flocons d avoine": ["flocons d avoine", "haferflocken", "avoine"],
+  "boeuf": ["boeuf", "rindfleisch"], "boeuf a braiser": ["boeuf a braiser", "boeuf bourguignon", "rindergulasch", "gulasch"], "porc": ["porc", "schweinefleisch"],
+  "cote de porc": ["cote de porc", "kotelett"], "escalope de dinde": ["escalope de dinde", "dinde", "pute", "putenschnitzel"], "veau": ["veau", "kalbfleisch"],
+  "agneau": ["agneau", "lamm"], "cabillaud": ["cabillaud", "kabeljau", "dos de cabillaud"], "poisson pane": ["poisson pane", "fischstabchen", "batonnets de poisson"],
+  "crevettes": ["crevettes", "garnelen", "shrimps"], "moules": ["moules", "muscheln"], "tortillas": ["tortillas", "wraps", "tortilla"], "frites": ["frites", "pommes frites"],
+  "concombre": ["concombre", "gurke"], "aubergine": ["aubergine"], "brocoli": ["brocoli", "brokkoli"], "chou fleur": ["chou fleur", "blumenkohl"],
+  "chou": ["chou", "kohl", "weisskohl"], "poireau": ["poireau", "lauch"], "navet": ["navet"], "endive": ["endive", "chicoree"], "potiron": ["potiron", "courge", "kurbis", "butternut"],
+  "avocat": ["avocat", "avocado"], "orange": ["orange"], "kiwi": ["kiwi"], "cerises": ["cerises", "kirschen"], "fruits rouges": ["fruits rouges", "beeren", "framboises", "myrtilles", "fraises"],
+  "biscuits": ["biscuits", "boudoirs", "speculoos", "lofflbiskuits", "kekse"], "choucroute": ["choucroute", "sauerkraut"], "spatzle": ["spatzle"], "gnocchis": ["gnocchis", "gnocchi"],
+  "tofu": ["tofu"], "quinoa": ["quinoa"], "bouillon": ["bouillon", "bruhe", "cube"], "vin rouge": ["vin rouge", "rotwein"], "vin blanc": ["vin blanc", "weisswein"],
+  "biere": ["biere", "bier"], "mozzarella": ["mozzarella"], "parmesan": ["parmesan", "grana"], "feta": ["feta"], "ricotta": ["ricotta"], "mascarpone": ["mascarpone"],
+  "reblochon": ["reblochon"], "cheddar": ["cheddar"], "gorgonzola": ["gorgonzola"], "comte": ["comte"], "fromage a raclette": ["raclette"],
+  "confit de canard": ["confit de canard", "canard"], "morue": ["morue", "stockfisch"], "chair a saucisse": ["chair a saucisse", "brat"], "petit sale": ["petit sale"],
+};
+const EXCL = {
+  "lait": ["coco", "amande", "avoine", "soja", "riz"], "pomme": ["terre"], "riz": ["nouilles", "galette", "lait"], "fromage": ["blanc", "frais"],
+  "creme fraiche": ["glace", "dessert", "coco"], "tomate": ["sauce", "concass", "pelee", "coulis", "cerise", "sechee", "ketchup"], "oignon": ["rouge", "nouveau", "frit"],
+  "pain": ["mie", "burger", "epice"], "chou": ["fleur", "rouge", "bruxelles", "croute"], "saumon": ["fume"], "poulet": ["cuisse", "nugget"], "boeuf": ["hache"],
+  "citron": ["vert"], "pates": ["brisee", "pizza", "feuilletee", "tartiner"], "nouilles": ["riz"], "yaourt": ["boire"], "sucre": ["glace"], "lentilles": ["corail"],
+};
+const rxCache = new Map();
+function rxFor(tok) {
+  // Mots longs : préfixe accepté (mots composés allemands : Hähnchenbrust, Kokosmilch…).
+  if (!rxCache.has(tok)) rxCache.set(tok, new RegExp(tok.length >= 5 ? `(^| )${tok}` : `(^| )${tok}(s|x|n|e|es)?( |$)`));
+  return rxCache.get(tok);
+}
+// Trouve le produit du stock qui correspond à un ingrédient (en stock d'abord).
+export function matchProduct(name, products) {
+  const key = normTxt(name);
+  const toks = SYN[key] || [key, key.replace(/s$/, "")];
+  const excl = EXCL[key] || [];
+  let best = null, bestScore = -1;
+  for (const p of products) {
+    if (p.categoryId && p.categoryId !== "alim") continue;
+    const n = normTxt(`${p.name} ${p.detail || ""}`);
+    if (excl.some((x) => n.includes(x))) continue;
+    let hit = 0;
+    for (const t of toks) if (rxFor(t).test(n)) hit = Math.max(hit, t.length);
+    if (!hit) continue;
+    const s = hit * 10 + (isAvailable(p) ? 1000 : 0);
+    if (s > bestScore) { best = p; bestScore = s; }
+  }
+  return best;
+}
+// Variante absente du stock → ingrédient plus général (ex. macaroni → pâtes).
+const FALLBACK = {
+  "spaghetti": "pates", "macaroni": "pates", "feuilles de lasagne": "pates", "cannellonis": "pates", "crozets": "pates",
+  "fromage rape": "fromage", "cheddar": "fromage", "comte": "fromage", "fromage a raclette": "fromage", "creme liquide": "creme fraiche",
+  "riz rond": "riz", "escalope de poulet": "poulet", "cuisse de poulet": "poulet", "steak hache": "viande hachee", "lentilles corail": "lentilles",
+  "nouilles de riz": "nouilles", "oignon rouge": "oignon", "oignon nouveau": "oignon", "echalote": "oignon", "pain de mie": "pain",
+  "tomates cerises": "tomate", "boeuf a braiser": "boeuf", "lard fume": "lardons", "chair a saucisse": "viande hachee",
+};
+// Recette du livre → ingrédients reliés au stock actuel.
+export function resolveRecipe(r, products) {
+  return { ...r, ingredients: r.ingredients.map((g) => {
+    let p = matchProduct(g.name, products);
+    const fb = FALLBACK[normTxt(g.name)];
+    if (fb && (!p || !isAvailable(p))) { const q = matchProduct(fb, products); if (q && (!p || isAvailable(q))) p = q; }
+    return { ...g, productId: p ? p.id : null };
+  }) };
+}
+
+function recipeAllowed(r, f, pr) {
+  if (f.dishType && r.type !== f.dishType) return false;
+  if (f.theme && r.theme !== f.theme) return false;
+  if (f.maxTime && (r.prepMin + r.cookMin) > Number(f.maxTime)) return false;
+  if (f.difficulty && r.difficulty !== f.difficulty) return false;
+  const words = normTxt(r.ingredients.map((g) => g.name).join(" | ") + " " + r.title);
+  const bad = [...(f.exclude || []), ...((pr && pr.allergies) || []), ...((pr && pr.dislikes) || [])].map(normTxt).filter(Boolean);
+  if (bad.some((b) => words.includes(b) || (r.allergens || []).some((a) => normTxt(a).includes(b)))) return false;
+  if ((f.mustUse || []).length) { const m = f.mustUse.map(normTxt).filter(Boolean); if (!m.every((x) => words.includes(x))) return false; }
+  return true;
+}
+// Évalue une recette avec un stock « restant » (réservation virtuelle pour le menu).
+function evalWithAvail(r, avail, byId, prioMap, portions) {
+  let score = 0, missing = 0, okN = 0;
+  const uses = [];
+  for (const g of scaleRecipe(r, portions || r.portions)) {
+    const p = g.productId ? byId[g.productId] : null;
+    if (!p) { if (!g.base) { missing += 1; score -= 4; } continue; }
+    if (isStatusMode(p)) { score += statusOf(p) === "epuise" ? -3 : 1.5; if (statusOf(p) === "epuise") missing += 1; continue; }
+    const need = g.qty == null ? null : convert(g.qty, g.unit, p.unit || "pièce");
+    const have = avail[p.id] || 0;
+    if (need == null) { if (have > 0) { score += 1.5; uses.push({ id: p.id, q: 0 }); } else { missing += 1; score -= 3; } }
+    else if (have + 1e-9 >= need) { score += 3; okN += 1; uses.push({ id: p.id, q: need }); }
+    else if (have > 0) { score += 1; missing += 1; uses.push({ id: p.id, q: have }); }
+    else { missing += 1; score -= 3; }
+    const pr = prioMap.get(p.id);
+    if (pr && have > 0) score += 8 / (1 + Math.max(0, pr.days));
+  }
+  return { score, missing, okN, uses };
+}
+function rng(seed) { let s = (seed >>> 0) || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+// Propositions classées selon le stock (onglet « Avec mes stocks »).
+export function suggestRecipes(book, products, { filters = {}, prefs = {}, limit = 20, now = new Date() } = {}) {
+  const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+  const avail = {};
+  for (const p of products) if (!isStatusMode(p)) avail[p.id] = round3(lotsOf(p).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0));
+  const prioMap = new Map(priorityList(products, now).map((x) => [x.product.id, x]));
+  return book.filter((r) => recipeAllowed(r, filters, prefs)).map((r) => {
+    const rr = resolveRecipe(r, products);
+    const ev = evalWithAvail(rr, avail, byId, prioMap, filters.portions);
+    return { recipe: rr, ...ev };
+  }).sort((a, b) => b.score - a.score).slice(0, limit);
+}
+// Menu de la semaine : choix glouton, stock réservé au fur et à mesure, plats variés.
+export function planWeek(book, products, { days = 5, perDay = 1, filters = {}, prefs = {}, avoid = [], seed = 1, now = new Date() } = {}) {
+  const rand = rng(seed);
+  const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+  const avail = {};
+  for (const p of products) if (!isStatusMode(p)) avail[p.id] = round3(lotsOf(p).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0));
+  const prioMap = new Map(priorityList(products, now).map((x) => [x.product.id, x]));
+  const f = { ...filters, dishType: filters.dishType || "Plat" };
+  // Bonus « plat du quotidien » : rapide et facile ; pénalité pour les plats longs ou techniques.
+  const ease = (r) => { const t = r.prepMin + r.cookMin; return (t <= 30 ? 1 : t <= 45 ? 0.5 : t > 90 ? -2.5 : t > 60 ? -1.5 : 0) + (r.difficulty === "Avancée" ? -2 : r.difficulty === "Moyenne" ? -0.5 : 0); };
+  let pool = book.filter((r) => recipeAllowed(r, f, prefs) && !avoid.includes(r.id)).map((r) => ({ r: resolveRecipe(r, products), j: rand() * 1.5 + ease(r) }));
+  const n = Math.max(1, Math.min(14, days * perDay));
+  const picked = [], mains = new Map(), themes = new Map();
+  const dayNames = weekDays(days, now);
+  while (picked.length < n && pool.length) {
+    let best = null, bestS = -Infinity, bestEv = null;
+    for (const c of pool) {
+      const ev = evalWithAvail(c.r, avail, byId, prioMap, f.portions);
+      const main = normTxt(c.r.ingredients.find((g) => !g.base)?.name || "");
+      const s = ev.score + c.j - (mains.get(main) || 0) * 4 - (themes.get(c.r.theme) || 0) * 0.8;
+      if (s > bestS) { best = c; bestS = s; bestEv = ev; }
+    }
+    if (!best) break;
+    for (const u of bestEv.uses) avail[u.id] = round3((avail[u.id] || 0) - u.q);
+    const main = normTxt(best.r.ingredients.find((g) => !g.base)?.name || "");
+    mains.set(main, (mains.get(main) || 0) + 1);
+    themes.set(best.r.theme, (themes.get(best.r.theme) || 0) + 1);
+    const i = picked.length;
+    picked.push({ recipe: best.r, day: dayNames[Math.floor(i / perDay)] || "", meal: perDay === 2 ? (i % 2 ? "Dîner" : "Déjeuner") : "" });
+    pool = pool.filter((c) => c !== best);
+  }
+  return picked;
 }

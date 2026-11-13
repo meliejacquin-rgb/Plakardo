@@ -1,6 +1,7 @@
 // PLAKARDO – application (v1, socle)
 import { createStore, isDemo, displayName, resolveName, newOpId } from "./data.js";
 import * as E from "./engine.js";
+import { BOOK } from "./recipes.js";
 import { household } from "./firebase-config.js";
 import { parseDateText } from "./codes.js";
 import { initScanner, openScanner, closeScanner, refreshScanner } from "./scan.js";
@@ -12,7 +13,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -99,7 +100,7 @@ const ui = {
   cookSearch: "",
   addSearch: "",
   stockView: "lieu",
-  recFilters: { portions: 2, theme: "", maxTime: "", difficulty: "", dishType: "", mustUse: [], exclude: [], extraBuys: "1 à 2 ingrédients", antigaspi: true, days: 5, meal: "dîner" },
+  recFilters: { portions: 2, theme: "", maxTime: "", difficulty: "", dishType: "", mustUse: [], exclude: [], extraBuys: "1 à 2 ingrédients", antigaspi: true, days: 5, meal: "dîner", dishType: "" },
   recMode: "week",
   recPaste: "",
   recParsed: null,
@@ -1024,15 +1025,25 @@ function loadParsed() {
 }
 function saveParsed() { try { sessionStorage.setItem("plakardo-rec", JSON.stringify(ui.recParsed)); } catch {} }
 const recAlias = {};
+// Recettes du livre : ingrédients reliés au stock actuel (recalculé quand le stock change).
+let resolvedFor = null; const resolved = new Map();
+function R(r) {
+  if (!r || !r.builtin) return r;
+  if (resolvedFor !== products) { resolvedFor = products; resolved.clear(); }
+  if (!resolved.has(r.id)) resolved.set(r.id, E.resolveRecipe(r, products));
+  return resolved.get(r.id);
+}
+const BOOK_BY_ID = new Map(BOOK.map((r) => [r.id, r]));
 function findRecipe(id) {
   if (recAlias[id]) id = recAlias[id];
-  return recipes.find((r) => r.id === id) || (loadParsed()?.recipes || []).find((r) => r.id === id);
+  return R(recipes.find((r) => r.id === id) || BOOK_BY_ID.get(id) || (loadParsed()?.recipes || []).find((r) => r.id === id));
 }
 const listTxt = (a) => (a || []).join(", ");
 const splitList = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 const tagPill = (t) => `<span class="pill" style="${t.kind === "prio" ? "background:var(--mint-soft);color:var(--mint-ink)" : t.kind === "ok" ? "background:var(--mint-soft);color:var(--mint-ink)" : t.kind === "miss" ? "background:var(--blush);color:var(--warn)" : "background:var(--soft);color:var(--muted-2)"}">${esc(t.text)}</span>`;
 
 function recipeCard(r) {
+  r = R(r);
   const sc = E.scoreRecipe(r, products);
   const fav = recipes.some((x) => x.id === r.id && isFav(x));
   return `<a class="card" href="#/recette/${encodeURIComponent(r.id)}" style="padding:12px;display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">
@@ -1046,55 +1057,55 @@ function recipeCard(r) {
 
 function viewRecettes() {
   const f = ui.recFilters;
-  const parsed = loadParsed();
   const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
-
   const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
-  const sorted = parsed ? [...parsed.recipes].sort((a, b) => E.scoreRecipe(b, products).score - E.scoreRecipe(a, products).score) : [];
-  return `<main class="screen">${offlineBanner()}
-    <div class="top"><div class="grow"><h1>Recettes</h1><span class="sub">Claude propose, Plakardo vérifie le stock</span></div>
-      <a class="icon-btn" href="#/menu" aria-label="Menu de la semaine">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</a></div>
-    <div class="seg" role="group" aria-label="Mode"><button data-act="recmode" data-v="week" aria-pressed="${ui.recMode === "week"}">Ma semaine</button><button data-act="recmode" data-v="stock" aria-pressed="${ui.recMode === "stock"}">Avec mes stocks</button><button data-act="recmode" data-v="inspiration" aria-pressed="${ui.recMode === "inspiration"}">Inspiration</button></div>
-    ${prio.length ? `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">À utiliser en priorité</span>
-      <span style="display:flex;flex-wrap:wrap;gap:4px">${prio.map((x) => `<span class="pill" style="background:var(--mint-soft);color:var(--mint-ink)">${esc(x.product.name)} · ${frDate(x.lot.expiry).slice(0, 5)}</span>`).join("")}</span></section>` : ""}
-    <details class="card" style="padding:12px 14px" ${parsed ? "" : "open"}><summary class="t" style="cursor:pointer">Filtres · ${ui.recMode === "week" ? `${f.days} jours · ${esc(f.meal)} · ` : ""}${f.portions} pers.${f.theme ? " · " + esc(f.theme) : ""}${f.dishType ? " · " + esc(f.dishType) : ""}${f.maxTime ? ` · ≤ ${f.maxTime} min` : ""}</summary>
+  const mode = ["week", "stock", "book"].includes(ui.recMode) ? ui.recMode : "week";
+  const filters = `<details class="card" style="padding:12px 14px"><summary class="t" style="cursor:pointer">Filtres · ${mode === "week" ? `${f.days} jours · ${esc(f.meal.split(" (")[0])} · ` : ""}${f.portions} pers.${f.theme ? " · " + esc(f.theme) : ""}${f.maxTime ? ` · ≤ ${f.maxTime} min` : ""}${f.difficulty ? " · " + esc(f.difficulty) : ""}</summary>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-        <div class="row-between"><span class="label">Portions</span><div class="qbox" style="padding:2px">
+        <div class="row-between"><span class="label">Personnes</span><div class="qbox" style="padding:2px">
           <button class="round-btn" style="width:36px;height:36px;background:var(--soft);color:var(--ink)" data-act="rf-port" data-v="-1" aria-label="Moins">${I.minus(14)}</button>
           <strong class="h" style="min-width:30px;text-align:center">${f.portions}</strong>
           <button class="round-btn" style="width:36px;height:36px;background:var(--primary);color:var(--primary-ink)" data-act="rf-port" data-v="1" aria-label="Plus">${I.plus(14)}</button></div></div>
-        ${ui.recMode === "week" ? `<span class="label">Nombre de jours</span><div class="chips">${[3, 4, 5, 6, 7].map((n) => chip("days", n, `${n} jours`)).join("")}</div>
-        <span class="label">Repas</span><div class="chips">${["dîner", "déjeuner", "déjeuner et dîner (2 recettes par jour)"].map((m) => chip("meal", m, m.split(" (")[0])).join("")}</div>` : ""}
-        <span class="label">Type</span><div class="chips">${chip("dishType", "", "Tous")}${E.DISH_TYPES.map((d) => chip("dishType", d, d)).join("")}</div>
-        <span class="label">Thème</span><select class="input" data-rf="theme" aria-label="Thème"><option value="">Libre</option>${E.THEMES.map((t) => `<option ${f.theme === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+        ${mode === "week" ? `<span class="label">Nombre de jours</span><div class="chips">${[3, 4, 5, 6, 7].map((n) => chip("days", n, `${n} jours`)).join("")}</div>
+        <span class="label">Repas</span><div class="chips">${["dîner", "déjeuner", "déjeuner et dîner"].map((m) => chip("meal", m, m)).join("")}</div>` : ""}
+        ${mode === "book" ? `<span class="label">Type</span><div class="chips">${chip("dishType", "", "Tous")}${E.DISH_TYPES.map((t) => chip("dishType", t, t)).join("")}</div>` : ""}
+        <span class="label">Cuisine</span><select class="input" data-rf="theme" aria-label="Cuisine"><option value="">Toutes</option>${E.THEMES.map((t) => `<option ${f.theme === t ? "selected" : ""}>${t}</option>`).join("")}</select>
         <span class="label">Temps total</span><div class="chips">${chip("maxTime", "", "Peu importe")}${[20, 30, 45, 60].map((m) => chip("maxTime", m, `≤ ${m} min`)).join("")}</div>
-        <span class="label">Difficulté</span><div class="chips">${chip("difficulty", "", "Peu importe")}${["Facile", "Moyenne", "Avancée"].map((d) => chip("difficulty", d, d)).join("")}</div>
-        <span class="label">Achats tolérés</span><div class="chips">${["Aucun", "1 à 2 ingrédients", "Libre"].map((d) => chip("extraBuys", d, d)).join("")}</div>
-        <input class="input" data-rf="mustUse" value="${esc(listTxt(f.mustUse))}" placeholder="À utiliser absolument (séparés par des virgules)" aria-label="Ingrédients imposés">
-        <input class="input" data-rf="exclude" value="${esc(listTxt(f.exclude))}" placeholder="À exclure (séparés par des virgules)" aria-label="Ingrédients exclus">
-        <button class="chip" data-act="rf-gaspi" aria-pressed="${f.antigaspi !== false}">Priorité anti-gaspi ${f.antigaspi !== false ? "activée" : "désactivée"}</button>
-        ${prefs().allergies?.length ? `<span class="s">Allergies exclues : ${esc(listTxt(prefs().allergies))} · <a href="#/profil">modifier</a></span>` : `<span class="s">Allergies, refus, équipements : <a href="#/profil">à régler dans Profil</a></span>`}
-      </div></details>
-    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
-      <span class="eyebrow">Avec Claude, sans copier sa réponse</span>
-      <span class="s">1. Touchez le bouton : la demande est copiée et la page « Plakardo · Cuisine » s’ouvre dans Claude.<br>2. Collez-la, touchez « Générer », cochez vos recettes.<br>3. Touchez « Envoyer dans Plakardo » : ${ui.recMode === "week" ? "menu, recettes et courses arrivent ici tout seuls." : "les recettes arrivent dans « Mes recettes »."}</span>
-      <a class="cta" href="${CUISINE_URL}" target="_blank" rel="noopener" data-act="rec-ask">${ui.recMode === "week" ? "Préparer ma semaine avec Claude" : "Trouver des recettes avec Claude"}</a>
-      <details ${ui.recManual ? "open" : ""}><summary class="s" style="cursor:pointer;text-decoration:underline">Ancienne méthode : conversation Claude + copier-coller</summary>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-        <button class="out-btn" data-act="rec-ask-chat">Copier la demande et ouvrir Claude</button>
-        <button class="out-btn" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
-      ${ui.recDiag ? `<div class="card" style="padding:10px 12px;border-color:var(--warn);display:flex;flex-direction:column;gap:4px">
-        <span class="err">Lecture impossible</span><span class="s">${esc(ui.recDiag.err)}</span>
-        <span class="s" style="font-family:monospace;font-size:11px;word-break:break-all">Reçu : ${ui.recDiag.len} caractères · json ${ui.recDiag.hasJson ? "oui" : "non"} · bloc ${ui.recDiag.hasFence ? "oui" : "non"}<br>Début : ${esc(ui.recDiag.head)}<br>Fin : ${esc(ui.recDiag.tail)}</span>
-        <span class="s">Faites une capture de cet encadré pour le support.</span></div>` : ""}
-        <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit;margin-top:8px" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
-        <button class="out-btn" style="width:100%" data-act="rec-read">Lire la réponse</button></div></details>
-    </section>
-    ${parsed ? `<section style="display:flex;flex-direction:column;gap:10px"><div class="row-between"><h2 class="eyebrow">Propositions (${sorted.length})</h2><button class="link-btn" data-act="rec-clear">Effacer</button></div>
-      ${parsed.blocage ? `<div class="card" style="padding:12px"><span class="err">Claude n’a rien trouvé : ${esc(parsed.blocage)}</span><span class="s">Assouplissez un filtre puis redemandez.</span></div>` : ""}
-      ${(parsed.errors || []).map((e) => `<p class="s warn">${esc(e)}</p>`).join("")}
-      ${sorted.map(recipeCard).join("")}
-      <p class="s">Classement calculé par Plakardo (dates, disponibilité). Dessins faits par Claude, à titre d’illustration.</p></section>` : ""}
+        <span class="label">Difficulté</span><div class="chips">${chip("difficulty", "", "Peu importe")}${["Facile", "Moyenne", "Avancée"].map((x) => chip("difficulty", x, x)).join("")}</div>
+        <input class="input" data-rf="exclude" value="${esc(listTxt(f.exclude))}" placeholder="À exclure (ex. porc, champignons)" aria-label="Ingrédients exclus">
+        ${prefs().allergies?.length ? `<span class="s">Allergies exclues : ${esc(listTxt(prefs().allergies))} · <a href="#/profil">modifier</a></span>` : `<span class="s">Allergies et refus : <a href="#/profil">à régler dans Profil</a></span>`}
+      </div></details>`;
+  let body = "";
+  if (mode === "week") {
+    const menu = menuEntries();
+    body = `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+      <span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:18px">Menu de la semaine</span>
+      <span class="s">Plakardo choisit parmi ${BOOK.filter((r) => r.type === "Plat").length} plats ceux qui utilisent votre stock, en commençant par ce qui périme bientôt, puis remplit la liste de courses.</span>
+      <button class="cta" data-act="week-make" ${ui.busy ? "disabled" : ""}>${menu.length ? "Recomposer ma semaine" : "Composer ma semaine"}</button>
+      ${menu.length ? `<a class="out-btn" href="#/menu" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Voir le menu en cours (${menu.length})</a>` : ""}
+    </section>`;
+  } else if (mode === "stock") {
+    const list = E.suggestRecipes(BOOK, products, { filters: { ...f, dishType: f.dishType }, prefs: prefs(), limit: 15 });
+    body = `<section style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">Le mieux adapté à votre stock</h2>
+      ${list.length ? list.map((x) => recipeCard(x.recipe)).join("") : `<p class="empty-state">Aucune recette ne correspond aux filtres.</p>`}</section>`;
+  } else {
+    const q = E.normTxt(ui.bookSearch || "");
+    const list = BOOK.filter((r) => (!f.dishType || r.type === f.dishType) && (!f.theme || r.theme === f.theme) && (!f.maxTime || r.prepMin + r.cookMin <= Number(f.maxTime)) && (!f.difficulty || r.difficulty === f.difficulty)
+      && (!q || E.normTxt(r.title + " " + r.ingredients.map((g) => g.name).join(" ")).includes(q)));
+    const shown = list.slice(0, ui.bookMore || 30);
+    body = `<label class="search">${I.search(18)}<input id="book-search" type="search" data-booksearch placeholder="Rechercher : poulet, gratin, curry…" value="${esc(ui.bookSearch || "")}" autocomplete="off" aria-label="Rechercher une recette"></label>
+      <section id="book-list" style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">${plural(list.length, "recette", "recettes")}</h2>
+      ${shown.map(recipeCard).join("")}
+      ${list.length > shown.length ? `<button class="out-btn" data-act="book-more">Afficher plus</button>` : ""}</section>`;
+  }
+  return `<main class="screen">${offlineBanner()}
+    <div class="top"><div class="grow"><h1>Recettes</h1><span class="sub">${BOOK.length} recettes intégrées · gratuites, sans connexion à une IA</span></div>
+      <a class="icon-btn" href="#/menu" aria-label="Menu de la semaine">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</a></div>
+    <div class="seg" role="group" aria-label="Mode"><button data-act="recmode" data-v="week" aria-pressed="${mode === "week"}">Ma semaine</button><button data-act="recmode" data-v="stock" aria-pressed="${mode === "stock"}">Avec mes stocks</button><button data-act="recmode" data-v="book" aria-pressed="${mode === "book"}">Le livre</button></div>
+    ${prio.length ? `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">À utiliser en priorité</span>
+      <span style="display:flex;flex-wrap:wrap;gap:4px">${prio.map((x) => `<span class="pill" style="background:var(--mint-soft);color:var(--mint-ink)">${esc(x.product.name)} · ${frDate(x.lot.expiry).slice(0, 5)}</span>`).join("")}</span></section>` : ""}
+    ${filters}
+    ${body}
     ${mesRecettes()}
   </main>${nav("recettes")}`;
 }
@@ -1103,7 +1114,7 @@ function viewRecettes() {
 function mesRecettes() {
   const menu = menuEntries();
   const mine = recipes.filter((r) => r.kind !== "prep").sort((x, y) => (isFav(y) - isFav(x)) || (y.savedAt?.seconds || y.savedAt || 0) - (x.savedAt?.seconds || x.savedAt || 0));
-  if (!menu.length && !mine.length) return `<section class="card" style="padding:14px"><span class="eyebrow">Mes recettes</span><span class="s">Les recettes envoyées depuis Claude et vos favoris s’afficheront ici.</span></section>`;
+  if (!menu.length && !mine.length) return `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:4px"><span class="eyebrow">Mes recettes</span><span class="s">Les recettes envoyées depuis Claude et vos favoris s’afficheront ici.</span></section>`;
   return `<section style="display:flex;flex-direction:column;gap:10px">
     ${menu.length ? `<a class="card shop-entry" href="#/menu"><span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 22)}</span>
       <span class="grow"><span class="t">Menu de la semaine</span><span class="s">${esc(menu.map((e) => e.day ? `${e.day.slice(0, 3)}. ${e.recipe.title}` : e.recipe.title).slice(0, 3).join(" · "))}${menu.length > 3 ? ` · +${menu.length - 3}` : ""}</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>` : ""}
@@ -1161,7 +1172,7 @@ function viewImport(r) {
 
 function viewRecette(id) {
   const r = findRecipe(id);
-  if (!r) return `<main class="screen"><div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><h1 style="font-size:24px">Recette introuvable</h1></div><p class="empty-state">Elle a peut-être été effacée. Redemandez à Claude.</p></main>`;
+  if (!r) return `<main class="screen"><div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><h1 style="font-size:24px">Recette introuvable</h1></div><p class="empty-state">Elle a peut-être été retirée de vos recettes.</p></main>`;
   const portions = ui.recPortions[r.id] || r.portions;
   const ings = E.scaleRecipe(r, portions);
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
@@ -1169,7 +1180,7 @@ function viewRecette(id) {
   const inMenu = (meta.menu?.entries || []).some((e) => e.recipeId === r.id);
   const pr = prefs();
   const allergyHit = (r.allergens || []).filter((a) => (pr.allergies || []).some((x) => a.toLowerCase().includes(x.toLowerCase())));
-  const ST = { ok: ["var(--mint-ink)", "●"], partial: ["var(--warn)", "◐"], missing: ["var(--warn)", "○"], check: ["var(--muted-2)", "?"] };
+  const ST = { ok: ["var(--mint-ink)", "●"], partial: ["var(--warn)", "◐"], missing: ["var(--warn)", "○"], check: ["var(--muted-2)", "?"], base: ["var(--muted-2)", "·"] };
   const states = ings.map((g) => E.ingredientState(g, byId));
   const nMiss = states.filter((s) => s.state === "missing" || s.state === "partial").length;
   return `<main class="screen no-nav">${offlineBanner()}
@@ -1190,7 +1201,7 @@ function viewRecette(id) {
         <span class="grow"><span class="t">${esc(g.name)}</span><span class="s" style="color:${ST[s.state][0]}">${esc(s.label)}${g.note ? ` · ${esc(g.note)}` : ""}</span></span>
         <strong>${g.qty == null ? "—" : `${fmtQ(g.qty)} ${esc(g.unit)}`}</strong></div>`;
     }).join("")}</div>
-    <span class="s">● disponible · ◐ partiel · ○ manquant · ? à vérifier</span></section>
+    <span class="s">● disponible · ◐ partiel · ○ manquant · ? à vérifier · « · » placard de base (sel, huile, épices…)</span></section>
     <section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">Étapes</h2><ol class="card" style="padding:12px 14px 12px 34px;margin:0;display:flex;flex-direction:column;gap:8px">${r.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></section>
     ${r.substitutions?.length ? `<section class="card" style="padding:12px 14px"><span class="eyebrow">Substitutions</span><ul style="margin:6px 0 0 18px;padding:0">${r.substitutions.map((s) => `<li class="s">${esc(s)}</li>`).join("")}</ul></section>` : ""}
     ${r.allergens?.length ? `<p class="s">Allergènes signalés : ${esc(r.allergens.join(", "))}. Vérifiez toujours les étiquettes.</p>` : ""}
@@ -1246,9 +1257,13 @@ function cookFromRecipe(r) {
 }
 
 function menuEntries() {
-  return (meta.menu?.entries || []).map((e, i) => ({ ...e, i, recipe: recipes.find((r) => r.id === e.recipeId) })).filter((e) => e.recipe);
+  return (meta.menu?.entries || []).map((e, i) => ({ ...e, i, recipe: findRecipe(e.recipeId) })).filter((e) => e.recipe);
 }
-function setMenu(entries) { return store.setMeta("menu", { entries: entries.map(({ recipeId, portions, day }) => ({ recipeId, portions, day: day || "" })) }); }
+function setMenu(entries) { return store.setMeta("menu", { entries: entries.map(({ recipeId, portions, day, meal }) => ({ recipeId, portions, day: day || "", meal: meal || "" })) }); }
+function allInShopping(lines) {
+  const todo = shopping.filter((d) => (d.state || (d.checked ? "bought" : "todo")) !== "stored" && d.state !== "cancelled");
+  return lines.every((L) => L.product ? todo.some((d) => d.id === `p_${L.product.id}`) : todo.some((d) => !d.productId && (d.label || "").toLowerCase() === L.name.toLowerCase()));
+}
 function viewMenu() {
   const entries = menuEntries();
   const needs = E.computeNeeds(entries.map((e) => ({ recipe: e.recipe, portions: e.portions })), products);
@@ -1261,15 +1276,16 @@ function viewMenu() {
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Menu de la semaine</h1><span class="sub">Besoins calculés sans compter deux fois le même stock</span></div></div>
     ${entries.length ? `<div class="card list">${entries.map((e, i) => `<div class="list-row">${vignette(e.recipe, 40)}
-      <a class="grow" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit">${e.day ? `<span class="eyebrow">${esc(e.day)}</span>` : ""}<span class="t">${esc(e.recipe.title)}</span><span class="s">${plural(e.portions, "portion", "portions")}</span></a>
-      <button class="sc-x" data-act="menu-port" data-i="${e.i}" data-v="-1" aria-label="Moins">−</button><button class="sc-x" data-act="menu-port" data-i="${e.i}" data-v="1" aria-label="Plus">+</button>
+      <a class="grow" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit">${e.day ? `<span class="eyebrow">${esc(e.day)}${e.meal ? " · " + esc(e.meal) : ""}</span>` : ""}<span class="t">${esc(e.recipe.title)}</span><span class="s">${plural(e.portions, "portion", "portions")}</span></a>
+      <button class="sc-x" data-act="menu-swap" data-i="${e.i}" aria-label="Changer cette recette" title="Changer">↻</button>
       <button class="sc-x" data-act="menu-del" data-i="${e.i}" aria-label="Retirer du menu">×</button></div>`).join("")}</div>`
       : `<p class="empty-state">Menu vide. Depuis une recette, touchez « Ajouter au menu ».</p>`}
     ${entries.length ? `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">À acheter (${buy.length})</h2>
       ${buy.length ? `<div class="card list">${buy.map(needRow).join("")}</div>` : `<p class="s">Tout est en stock${okN ? ` (${plural(okN, "ingrédient", "ingrédients")})` : ""}.</p>`}
       ${other.length ? `<h2 class="eyebrow">À vérifier (${other.length})</h2><div class="card list">${other.map(needRow).join("")}</div>` : ""}
       <button class="link-btn" data-act="menu-clear">Vider le menu</button></section>` : ""}
-  </main>${buy.length ? `<div class="cta-bar"><button class="cta" data-act="menu-shop">Ajouter ${plural(buy.length, "besoin", "besoins")} aux courses</button></div>` : ""}`;
+  </main>${buy.length && !allInShopping(buy) ? `<div class="cta-bar"><button class="cta" data-act="menu-shop">Ajouter ${plural(buy.length, "besoin", "besoins")} aux courses</button></div>`
+    : buy.length ? `<div class="cta-bar"><a class="cta" href="#/courses" style="background:var(--surface);color:var(--primary);border:1px solid var(--primary)">Déjà dans la liste de courses · Voir</a></div>` : ""}`;
 }
 
 // ---- Courses à états + rangement ----
@@ -1448,6 +1464,33 @@ async function applyWeek(res) {
   } catch (e) { showToast(e?.message || "Impossible d’enregistrer le menu"); if (route().name === "import") throw e; }
   finally { ui.busy = false; render(); }
 }
+async function composeWeek({ replaceIndex = null } = {}) {
+  if (!canWrite()) return;
+  const f = ui.recFilters;
+  const perDay = /et d/.test(f.meal) ? 2 : 1;
+  const current = meta.menu?.entries || [];
+  ui.busy = true; render();
+  try {
+    if (replaceIndex != null) {
+      const cur = current[replaceIndex];
+      const [pick] = E.planWeek(BOOK, products, { days: 1, perDay: 1, filters: { ...f }, prefs: prefs(), avoid: current.map((x) => x.recipeId), seed: Date.now() });
+      if (!pick) { showToast("Aucune autre recette ne correspond aux filtres"); return; }
+      const list = current.map((x, i) => (i === replaceIndex ? { ...x, recipeId: pick.recipe.id } : x));
+      await setMenu(list);
+      showToast(`${cur.day ? cur.day + " : " : ""}${pick.recipe.title}`);
+      return;
+    }
+    const plan = E.planWeek(BOOK, products, { days: f.days || 5, perDay, filters: { ...f }, prefs: prefs(), seed: Date.now() });
+    if (!plan.length) { showToast("Aucune recette ne correspond aux filtres"); return; }
+    const entries = plan.map((x) => ({ recipeId: x.recipe.id, portions: f.portions || 2, day: x.day, meal: x.meal }));
+    await setMenu(entries);
+    const needs = E.computeNeeds(plan.map((x) => ({ recipe: x.recipe, portions: f.portions || 2 })), products);
+    const n = addNeedsToShopping(needs, "Menu");
+    showToast(`Menu prêt : ${plural(plan.length, "recette", "recettes")}${n ? ` · ${plural(n, "article ajouté", "articles ajoutés")} aux courses` : ""}`);
+    go("#/menu");
+  } catch (e) { showToast(e?.message || "Impossible de composer le menu"); }
+  finally { ui.busy = false; render(); }
+}
 // ───────────────────────── Rendu ─────────────────────────
 function render() {
   const active = document.activeElement;
@@ -1615,9 +1658,10 @@ app.addEventListener("click", (e) => {
       const saved = recipes.find((x) => x.id === r.id);
       const inMenu = (meta.menu?.entries || []).some((e2) => e2.recipeId === r.id);
       if (saved && isFav(saved)) {
-        if (inMenu) store.saveRecipe({ ...saved, kind: "plan" }); else store.deleteRecipe(r.id);
+        if (inMenu && !saved.builtin) store.saveRecipe({ ...saved, kind: "plan" }); else store.deleteRecipe(r.id);
         showToast("Retirée des favoris");
       } else if (saved) { store.saveRecipe({ ...saved, kind: "recipe" }); showToast("Ajoutée aux favoris"); }
+      else if (r.builtin) { store.saveRecipe({ ...BOOK_BY_ID.get(r.id), kind: "recipe", savedBy: me(), savedAt: Date.now() }); showToast("Ajoutée aux favoris"); }
       else ensureSaved(r).then(() => { showToast("Ajoutée aux favoris"); render(); });
       render();
       break;
@@ -1633,6 +1677,9 @@ app.addEventListener("click", (e) => {
       ensureSaved(r).then((nid) => { setMenu([...(meta.menu?.entries || []), { recipeId: nid, portions: ui.recPortions[r.id] || r.portions }]); showToast("Ajoutée au menu"); render(); });
       break;
     }
+    case "week-make": composeWeek(); break;
+    case "menu-swap": composeWeek({ replaceIndex: Number(t.dataset.i) }); break;
+    case "book-more": ui.bookMore = (ui.bookMore || 30) + 30; render(); break;
     case "rec-cook": { const r = findRecipe(v); if (r) cookFromRecipe(r); break; }
     case "menu-port": { const list = [...(meta.menu?.entries || [])]; const e2 = list[Number(t.dataset.i)]; if (e2) { e2.portions = Math.max(1, (e2.portions || 2) + Number(v)); setMenu(list); } break; }
     case "menu-del": { const list = [...(meta.menu?.entries || [])]; list.splice(Number(t.dataset.i), 1); setMenu(list); break; }
@@ -1688,7 +1735,8 @@ app.addEventListener("input", (e) => {
   }
   if (t.matches("[data-cookq]")) { const c = ui.cook[Number(t.dataset.cookq)]; if (c) c.qty = parseQ(t.value); return; }
   if (t.matches("[data-recpaste]")) { ui.recPaste = t.value; return; }
-  if (t.matches("[data-rf]")) { const k = t.dataset.rf; ui.recFilters[k] = k === "mustUse" || k === "exclude" ? splitList(t.value) : t.value; return; }
+  if (t.matches("[data-booksearch]")) { ui.bookSearch = t.value; ui.bookMore = 30; const caret = t.selectionStart; render(); const el = document.getElementById("book-search"); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch {} } return; }
+  if (t.matches("[data-rf]")) { const k = t.dataset.rf; ui.recFilters[k] = k === "mustUse" || k === "exclude" ? splitList(t.value) : t.value; if (t.tagName === "SELECT") render(); return; }
   if (t.matches("[data-storeq]")) { const s = ui.storeSel?.[Number(t.dataset.storeq)]; if (s) s.qty = parseQ(t.value); return; }
   if (t.matches("[data-stored]")) { const s = ui.storeSel?.[Number(t.dataset.stored)]; if (s) { s.dateText = t.value; s.expiry = parseDateText(t.value) || ""; } return; }
   if (t.matches("[data-ls]") && ui.lotSheet) {
