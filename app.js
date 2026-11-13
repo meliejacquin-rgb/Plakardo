@@ -997,6 +997,7 @@ const hashStr = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.c
 const VIG_COLORS = [["#F6D7C3", "#C2562F"], ["#DDEBD5", "#4E7A3A"], ["#F3E3B5", "#A9781C"], ["#E5DAF0", "#6B4A8E"], ["#D7E8EE", "#2F6E85"], ["#F5D5DC", "#A53D5A"]];
 // Vignette illustrative dessinée par l'app (pas une photo du plat).
 function vignette(r, size = 64) {
+  if (r.drawing) return `<img src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.drawing)}" width="${size}" height="${size}" alt="" style="border-radius:${size / 4}px;flex:none;background:var(--soft)">`;
   const h = hashStr(r.title || "");
   const [bg, fg] = VIG_COLORS[h % VIG_COLORS.length];
   const t = (r.type || "Plat").toLowerCase();
@@ -1082,7 +1083,7 @@ function viewRecettes() {
       ${parsed.blocage ? `<div class="card" style="padding:12px"><span class="err">Claude n’a rien trouvé : ${esc(parsed.blocage)}</span><span class="s">Assouplissez un filtre puis redemandez.</span></div>` : ""}
       ${(parsed.errors || []).map((e) => `<p class="s warn">${esc(e)}</p>`).join("")}
       ${sorted.map(recipeCard).join("")}
-      <p class="s">Classement calculé par Plakardo (dates, disponibilité). Vignettes illustratives, pas des photos du plat.</p></section>` : ""}
+      <p class="s">Classement calculé par Plakardo (dates, disponibilité). Dessins faits par Claude, à titre d’illustration.</p></section>` : ""}
     ${favs.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">Favoris (${favs.length})</h2>${favs.map(recipeCard).join("")}</section>` : ""}
   </main>${nav("recettes")}`;
 }

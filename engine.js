@@ -306,9 +306,10 @@ export function buildPrompt({ products, locations, filters, prefs, mode, now = n
     '```json',
     '{"recettes":[{"titre":"…","description":"…","theme":"…","type":"Plat","portions":2,"preparation_min":10,"cuisson_min":20,"difficulte":"Facile",',
     '"ingredients":[{"nom":"…","quantite":200,"unite":"g","id":"id du stock ou null","indivisible":false}],',
-    '"etapes":["…","…"],"substitutions":["…"],"allergenes":["…"]}],"blocage":null}',
+    '"etapes":["…","…"],"substitutions":["…"],"allergenes":["…"],"dessin_svg":"<svg viewBox=\'0 0 64 64\'>…</svg>"}],"blocage":null}',
     '```',
     "Règles : unités parmi g, kg, ml, cl, l, pièce, c. à soupe, c. à café, pincée. Reprends l’id exact du stock quand l’ingrédient en vient, sinon null. N’indique jamais une quantité de stock que tu ne connais pas.",
+    "Dessin : pour chaque recette, \"dessin_svg\" est une petite illustration du plat servi, style plat et coloré, vue de face ou de dessus, viewBox 0 0 64 64, fond de couleur douce, sans texte, uniquement les balises svg, g, rect, circle, ellipse, path, polygon, polyline, line, 1500 caractères maximum, guillemets simples dans les attributs.",
   ];
   return lines.filter((x) => x !== "").join("\n").replace(/\nCONTRAINTES/, "\n\nCONTRAINTES").replace(/\nPRODUITS PRIORITAIRES/, "\n\nPRODUITS PRIORITAIRES").replace(/\nSTOCK \(/, "\n\nSTOCK (").replace(/\nFORMAT DE/, "\n\nFORMAT DE");
 }
@@ -363,6 +364,7 @@ export function parseRecipes(text, products) {
       difficulty: String(r.difficulte || "").trim(), ingredients, steps: steps.map((s) => s.trim()),
       substitutions: (Array.isArray(r.substitutions) ? r.substitutions : []).filter((s) => typeof s === "string"),
       allergens: (Array.isArray(r.allergenes) ? r.allergenes : []).filter((s) => typeof s === "string"),
+      drawing: sanitizeSvg(r.dessin_svg),
       source: "claude", version: 1,
     });
   });
@@ -473,4 +475,43 @@ export function computeNeeds(entries, products, now = new Date()) {
     out.push(L);
   }
   return out.sort((a, b) => ({ buy: 0, suggest: 1, check: 2, ok: 3 }[a.mode] - { buy: 0, suggest: 1, check: 2, ok: 3 }[b.mode]) || a.name.localeCompare(b.name, "fr"));
+}
+
+
+// Dessin fourni par Claude : seules des formes simples sont gardées (pas de script, lien, image ni texte).
+const SVG_TAGS = new Set(["svg", "g", "rect", "circle", "ellipse", "path", "polygon", "polyline", "line"]);
+const SVG_ATTRS = new Set(["viewbox", "xmlns", "d", "cx", "cy", "r", "rx", "ry", "x", "y", "width", "height", "x1", "y1", "x2", "y2", "points",
+  "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "opacity", "fill-opacity", "stroke-opacity", "transform", "fill-rule"]);
+export function sanitizeSvg(src) {
+  const s = String(src || "").trim();
+  if (!s || s.length > 6000 || !/^<svg[\s>]/i.test(s)) return null;
+  const out = [];
+  const re = /<\s*(\/?)\s*([a-zA-Z]+)([^<>]*?)(\/?)\s*>/g;
+  let m, last = 0, depth = 0;
+  while ((m = re.exec(s))) {
+    if (s.slice(last, m.index).trim()) return null; // pas de texte entre les balises
+    last = re.lastIndex;
+    const [, close, tagRaw, attrs, self] = m;
+    const tag = tagRaw.toLowerCase();
+    if (!SVG_TAGS.has(tag)) return null;
+    if (close) { out.push(`</${tag}>`); depth -= 1; continue; }
+    const kept = [];
+    const ar = /([a-zA-Z:-]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
+    let a, rest = attrs;
+    while ((a = ar.exec(attrs))) {
+      const name = a[1].toLowerCase();
+      const val = a[3] ?? a[4] ?? "";
+      if (!SVG_ATTRS.has(name)) continue;
+      if (/url\(|javascript|expression|[<>&"]/i.test(val) || val.length > 2000) return null;
+      kept.push(`${name === "viewbox" ? "viewBox" : name}="${val}"`);
+      rest = rest.replace(a[0], "");
+    }
+    if (rest.replace(/\//g, "").trim()) return null;
+    if (tag === "svg" && !kept.some((k) => k.startsWith("xmlns="))) kept.push('xmlns="http://www.w3.org/2000/svg"');
+    out.push(`<${tag}${kept.length ? " " + kept.join(" ") : ""}${self ? "/" : ""}>`);
+    if (!self) depth += 1;
+  }
+  if (s.slice(last).trim() || depth !== 0) return null;
+  const res = out.join("");
+  return /^<svg[^>]*viewBox=/.test(res) ? res : null;
 }
