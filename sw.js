@@ -1,6 +1,6 @@
 // Service worker : l'app s'ouvre même sans réseau.
 // Changer VERSION à chaque mise à jour publiée.
-const VERSION = "plakardo-v1-scan-1";
+const VERSION = "plakardo-v1-scan-2";
 const SHELL = [
   "./",
   "index.html",
@@ -16,7 +16,7 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
@@ -37,7 +37,7 @@ self.addEventListener("fetch", (e) => {
 
   // Réseau d'abord pour l'app (mises à jour immédiates), cache si hors ligne.
   e.respondWith(
-    fetch(req)
+    fetch(sameOrigin ? new Request(req, { cache: "no-cache" }) : req)
       .then((res) => {
         if (res.ok || res.type === "opaque") {
           const copy = res.clone();
