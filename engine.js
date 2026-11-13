@@ -313,10 +313,10 @@ export function buildPrompt({ products, locations, filters, prefs, mode, now = n
     '```json',
     '{"recettes":[{"jour":"Lundi","titre":"…","description":"…","theme":"…","type":"Plat","portions":2,"preparation_min":10,"cuisson_min":20,"difficulte":"Facile",',
     '"ingredients":[{"nom":"…","quantite":200,"unite":"g","id":"id du stock ou null","indivisible":false}],',
-    '"etapes":["…","…"],"substitutions":["…"],"allergenes":["…"],"dessin_svg":"<svg viewBox=\'0 0 64 64\'>…</svg>"}],"blocage":null}',
+    '"etapes":["…","…"],"substitutions":["…"],"allergenes":["…"]}],"blocage":null}',
     '```',
     "Règles : unités parmi g, kg, ml, cl, l, pièce, c. à soupe, c. à café, pincée. Reprends l’id exact du stock quand l’ingrédient en vient, sinon null. N’indique jamais une quantité de stock que tu ne connais pas.",
-    "Dessin : pour chaque recette, \"dessin_svg\" est une petite illustration du plat servi, style plat et coloré, vue de face ou de dessus, viewBox 0 0 64 64, fond de couleur douce, sans texte, uniquement les balises svg, g, rect, circle, ellipse, path, polygon, polyline, line, 1500 caractères maximum, guillemets simples dans les attributs.",
+    "Réponds directement dans la conversation, sans créer de fichier, de document ni d’artefact, et sans texte avant ou après le bloc json.",
   ];
   return lines.filter((x) => x !== "").join("\n").replace(/\nCONTRAINTES/, "\n\nCONTRAINTES").replace(/\nPRODUITS PRIORITAIRES/, "\n\nPRODUITS PRIORITAIRES").replace(/\nSTOCK \(/, "\n\nSTOCK (").replace(/\nFORMAT DE/, "\n\nFORMAT DE");
 }

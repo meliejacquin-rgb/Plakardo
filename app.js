@@ -12,6 +12,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
+const APP_VERSION = "2.2.5";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
 const PLURAL = { pièce: "pièces", boîte: "boîtes", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", g: "g", kg: "kg", ml: "ml", L: "L" };
@@ -686,6 +687,7 @@ function viewProfil() {
       </div>
     </section>
     ${prefsSection()}
+    <p class="s" style="text-align:center">Version de l’app : ${APP_VERSION}</p>
     <a class="card shop-entry" href="#/kits"><span class="grow"><span class="t">Kits de démarrage</span><span class="s">Ajouter d’un coup les produits courants d’un placard</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>
     <section class="card" style="padding:14px 16px;display:flex;gap:12px;align-items:center">
       <span style="color:var(--primary)">${I.share(22)}</span>
@@ -1079,6 +1081,10 @@ function viewRecettes() {
       <span class="eyebrow" style="margin-top:4px">2 · Revenir ici</span>
       <button class="cta" style="background:var(--ink);color:var(--bg)" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
       ${ui.recMode === "week" ? `<span class="s">Plakardo range les recettes jour par jour et ajoute ce qui manque à la liste de courses.</span>` : ""}
+      ${ui.recDiag ? `<div class="card" style="padding:10px 12px;border-color:var(--warn);display:flex;flex-direction:column;gap:4px">
+        <span class="err">Lecture impossible</span><span class="s">${esc(ui.recDiag.err)}</span>
+        <span class="s" style="font-family:monospace;font-size:11px;word-break:break-all">Reçu : ${ui.recDiag.len} caractères · json ${ui.recDiag.hasJson ? "oui" : "non"} · bloc ${ui.recDiag.hasFence ? "oui" : "non"}<br>Début : ${esc(ui.recDiag.head)}<br>Fin : ${esc(ui.recDiag.tail)}</span>
+        <span class="s">Faites une capture de cet encadré pour le support.</span></div>` : ""}
       <details ${ui.recManual ? "open" : ""}><summary class="s" style="cursor:pointer;text-decoration:underline">Coller à la main</summary>
         <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit;margin-top:8px" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
         <button class="out-btn" style="width:100%;margin-top:8px" data-act="rec-read">Lire la réponse</button></details>
@@ -1343,6 +1349,9 @@ async function lotSheetGo() {
 
 async function readRecipes() {
   const res = E.parseRecipes(ui.recPaste, products);
+  ui.recDiag = !res.recipes.length && !res.blocage
+    ? { len: ui.recPaste.length, head: ui.recPaste.slice(0, 160), tail: ui.recPaste.slice(-80), hasJson: /recettes/.test(ui.recPaste), hasFence: ui.recPaste.includes("```"), err: res.errors[0] || "" }
+    : null;
   if (!res.recipes.length && !res.blocage) {
     showToast(res.errors[0] || "Réponse illisible");
     ui.recManual = true;
