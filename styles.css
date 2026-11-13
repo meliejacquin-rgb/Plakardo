@@ -265,3 +265,19 @@ html { overflow-anchor: none; }
 .kit-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--soft); }
 .kit-row:last-child { border-bottom: 0; }
 .kit-row .grow { flex: 1; min-width: 0; }
+
+/* ---- V2.2 ---- */
+.label { font-size: 14px; font-weight: 600; }
+textarea.input { height: auto; line-height: 1.4; resize: vertical; }
+select.input { appearance: none; -webkit-appearance: none; }
+.offline { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-radius: 14px; background: var(--warn-soft); color: var(--warn); font-size: 13px; font-weight: 600; }
+.sheet-dim { position: fixed; inset: 0; background: rgba(20, 10, 30, .45); z-index: 20; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; max-width: 640px; margin: 0 auto; max-height: 85vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: var(--bg); border-radius: 28px 28px 0 0; padding: 18px 20px calc(env(safe-area-inset-bottom) + 18px); display: flex; flex-direction: column; gap: 12px; box-shadow: 0 -10px 30px rgba(0,0,0,.2); }
+.sheet h2 { margin: 0; font-family: "Nunito", sans-serif; font-weight: 900; font-size: 20px; }
+.sheet .link-btn { align-self: center; }
+.cta-bar.over-nav { bottom: calc(env(safe-area-inset-bottom) + 72px); background: none; padding-top: 0; padding-bottom: 8px; }
+.screen.tall { padding-bottom: 200px; }
+.nav a { position: relative; }
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }

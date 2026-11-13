@@ -1,6 +1,10 @@
 // Couche de données : Firebase (réel) ou démo (stockage local).
 // L'interface est la même dans les deux cas.
 import { firebaseConfig, household } from "./firebase-config.js";
+import { applyLines, compensationLines, OpError, DEFAULT_LOCATIONS, lotsOf, round3 } from "./engine.js";
+
+const clean = (o) => JSON.parse(JSON.stringify(o));
+export function newOpId() { return "op" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2";
 
@@ -46,17 +50,45 @@ function demoStore() {
     history: [],
     barcodes: {},
     shopping: {},
+    ops: [],
+    meta: { locations: { list: DEFAULT_LOCATIONS }, prefs: { allergies: [], dislikes: [], equipment: ["Four"] }, menu: { entries: [] } },
+    recipes: {},
   });
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { db = seed(); }
   const listeners = new Set();
   const shopListeners = new Set();
+  const opListeners = new Set(), metaListeners = new Set(), recListeners = new Set();
+  db.ops = db.ops || []; db.meta = db.meta || seed().meta; db.recipes = db.recipes || {};
   const shopList = () => Object.entries(db.shopping || {}).map(([id, v]) => ({ id, ...v }));
   const save = () => {
     try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {}
     listeners.forEach((cb) => cb(db.products.map((p) => ({ ...p }))));
     shopListeners.forEach((cb) => cb(shopList()));
+    opListeners.forEach((cb) => cb([...db.ops].reverse().slice(0, 80)));
+    metaListeners.forEach((cb) => cb(clean(db.meta)));
+    recListeners.forEach((cb) => cb(Object.values(db.recipes)));
   };
+  const productMap = () => Object.fromEntries(db.products.map((p) => [p.id, p]));
+  async function runOp(op) {
+    if (db.ops.some((o) => o.id === op.id)) return { status: "duplicate" };
+    let orig = null;
+    if (op.compensates) {
+      orig = db.ops.find((o) => o.id === op.compensates);
+      if (!orig) throw new OpError("missing", "Opération introuvable.");
+      if (orig.compensatedBy) throw new OpError("already", "Cette opération a déjà été annulée.");
+    }
+    const lines = op.compensates ? compensationLines(orig) : op.lines;
+    const { writes, recorded } = applyLines(productMap(), lines, { by: op.by });
+    for (const [id, doc] of Object.entries(writes)) {
+      const i = db.products.findIndex((p) => p.id === id);
+      if (i === -1) db.products.push({ ...doc, id }); else db.products[i] = { ...doc, id };
+    }
+    db.ops.push(clean({ id: op.id, type: op.type, label: op.label, by: op.by, at: Date.now(), lines: recorded, compensates: op.compensates || null }));
+    if (orig) orig.compensatedBy = op.id;
+    save();
+    return { status: "ok", recorded };
+  }
   const user = { email: "demo@plakardo", demo: true };
   return {
     onUser(cb) { setTimeout(() => cb(user), 0); return () => {}; },
@@ -67,23 +99,31 @@ function demoStore() {
       cb(db.products.map((p) => ({ ...p })));
       return () => listeners.delete(cb);
     },
+    runOp,
     async addProduct(p) {
-      const id = "d" + Date.now();
-      db.products.push({ ...p, id });
-      save();
+      const id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      const { quantity, loc, expiry, expiryType, ...meta } = p;
+      if (Number(quantity) > 0) await runOp({ id: newOpId(), type: "add", label: `Ajout · ${p.name}`, by: p.updatedBy || "", lines: [{ kind: "add", productId: id, amount: Number(quantity), loc, expiry, expiryType, newProduct: { ...meta, lots: [] } }] });
+      else { db.products.push({ ...meta, id, lots: [], quantity: 0 }); save(); }
       return id;
     },
+    subscribeOps(cb) { opListeners.add(cb); cb([...db.ops].reverse().slice(0, 80)); return () => opListeners.delete(cb); },
+    subscribeMeta(cb) { metaListeners.add(cb); cb(clean(db.meta)); return () => metaListeners.delete(cb); },
+    async setMeta(key, data) { db.meta[key] = clean(data); save(); },
+    subscribeRecipes(cb) { recListeners.add(cb); cb(Object.values(db.recipes)); return () => recListeners.delete(cb); },
+    async saveRecipe(r) { const id = !r.id || r.id.startsWith("tmp") ? "r" + Date.now().toString(36) : r.id; db.recipes[id] = clean({ ...r, id }); save(); return id; },
+    async deleteRecipe(id) { delete db.recipes[id]; save(); },
+    async exportAll() { return clean(db); },
     async updateProduct(id, fields) {
       const p = db.products.find((x) => x.id === id);
       if (p) Object.assign(p, fields);
       save();
     },
-    async changeQty(id, delta, by) {
+    async changeQty(id, delta, by, extra = {}) {
+      if (!delta) return;
       const p = db.products.find((x) => x.id === id);
-      if (!p || !delta) return;
-      p.quantity = Math.max(0, (p.quantity || 0) + delta);
-      db.history.push({ productId: id, delta, by, at: Date.now() });
-      save();
+      const { label, ...lotInfo } = extra;
+      return runOp({ id: newOpId(), type: delta > 0 ? "add" : "remove", label: label || `${delta > 0 ? "Ajout" : "Retrait"} · ${p ? p.name : ""}`, by, lines: [{ kind: delta > 0 ? "add" : "remove", productId: id, amount: Math.abs(delta), ...(delta > 0 ? lotInfo : {}) }] });
     },
     async deleteProduct(id) {
       db.products = db.products.filter((x) => x.id !== id);
@@ -115,6 +155,52 @@ async function firebaseStore() {
   const productsCol = fs.collection(db, ...base, "products");
   const historyCol = fs.collection(db, ...base, "history");
   const pRef = (id) => fs.doc(db, ...base, "products", id);
+  const opsCol = fs.collection(db, ...base, "operations");
+  const metaCol = fs.collection(db, ...base, "meta");
+  const recCol = fs.collection(db, ...base, "recipes");
+
+  // Opération métier atomique et idempotente (COOK-03/04/05) : transaction serveur, jamais rejouée hors ligne.
+  async function runOp(op) {
+    if (!navigator.onLine) throw new OpError("offline", "Hors ligne : modification impossible pour le moment.");
+    const opRef = fs.doc(opsCol, op.id);
+    const attempt = () => fs.runTransaction(db, async (tx) => {
+      const already = await tx.get(opRef);
+      if (already.exists()) return { status: "duplicate" };
+      let orig = null, origRef = null;
+      if (op.compensates) {
+        origRef = fs.doc(opsCol, op.compensates);
+        const o = await tx.get(origRef);
+        if (!o.exists()) throw new OpError("missing", "Opération introuvable.");
+        orig = o.data();
+        if (orig.compensatedBy) throw new OpError("already", "Cette opération a déjà été annulée.");
+      }
+      const lines = op.compensates ? compensationLines(orig) : op.lines;
+      const ids = [...new Set(lines.map((l) => l.productId))];
+      const snaps = await Promise.all(ids.map((id) => tx.get(pRef(id))));
+      const products = {};
+      snaps.forEach((s, i) => { if (s.exists()) products[ids[i]] = { id: ids[i], ...s.data() }; });
+      const { writes, recorded } = applyLines(products, lines, { by: op.by });
+      for (const [id, docData] of Object.entries(writes)) {
+        const { id: _drop, createdAt: _c, updatedAt: _u, ...rest } = docData;
+        tx.set(pRef(id), { ...clean(rest), lastOp: op.id, updatedAt: fs.serverTimestamp(), ...(products[id] ? {} : { createdAt: fs.serverTimestamp() }) }, { merge: true });
+      }
+      tx.set(opRef, { ...clean({ type: op.type, label: op.label || "", by: op.by || "", lines: recorded, compensates: op.compensates || null }), at: fs.serverTimestamp() });
+      if (origRef) tx.update(origRef, { compensatedBy: op.id });
+      return { status: "ok", recorded };
+    });
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new OpError("timeout", "Le serveur ne répond pas.")), 15000));
+    try {
+      return await Promise.race([attempt(), timeout]);
+    } catch (e) {
+      if (e instanceof OpError && e.code !== "timeout") throw e;
+      // OFF-03 : après une erreur réseau, on vérifie l'identifiant d'opération au lieu de retenter un retrait.
+      try {
+        const check = await fs.getDocFromServer(opRef);
+        if (check.exists()) return { status: "ok", recovered: true };
+      } catch {}
+      throw new OpError("network", "Connexion instable : l’opération n’a pas été enregistrée. Réessayez.");
+    }
+  }
 
   return {
     onUser(cb) { return authMod.onAuthStateChanged(auth, (u) => cb(u ? { email: u.email, uid: u.uid } : null)); },
@@ -127,22 +213,46 @@ async function firebaseStore() {
         (err) => onError && onError(err)
       );
     },
+    runOp,
     async addProduct(p) {
-      const ref = await fs.addDoc(productsCol, { ...p, createdAt: fs.serverTimestamp(), updatedAt: fs.serverTimestamp() });
-      return ref.id;
+      const id = fs.doc(productsCol).id;
+      const { quantity, loc, expiry, expiryType, ...meta } = p;
+      if (Number(quantity) > 0) await runOp({ id: newOpId(), type: "add", label: `Ajout · ${p.name}`, by: p.updatedBy || "", lines: [{ kind: "add", productId: id, amount: Number(quantity), loc, expiry, expiryType, newProduct: { ...meta, lots: [] } }] });
+      else await fs.setDoc(pRef(id), clean({ ...meta, lots: [], quantity: 0 }));
+      return id;
     },
     updateProduct(id, fields) {
       return fs.updateDoc(pRef(id), { ...fields, updatedAt: fs.serverTimestamp() });
     },
-    async changeQty(id, delta, by) {
-      if (!delta) return;
-      const batch = fs.writeBatch(db);
-      batch.update(pRef(id), { quantity: fs.increment(delta), updatedAt: fs.serverTimestamp(), updatedBy: by });
-      batch.set(fs.doc(historyCol), { productId: id, delta, by, at: fs.serverTimestamp() });
-      // Pas d'attente du serveur : hors ligne, l'écriture part au retour du réseau.
-      batch.commit().catch((e) => console.error("Écriture refusée", e));
+    changeQty(id, delta, by, extra = {}) {
+      if (!delta) return Promise.resolve();
+      const { label, ...lotInfo } = extra;
+      return runOp({ id: newOpId(), type: delta > 0 ? "add" : "remove", label: label || `${delta > 0 ? "Ajout" : "Retrait"} (scan)`, by, lines: [{ kind: delta > 0 ? "add" : "remove", productId: id, amount: Math.abs(delta), ...(delta > 0 ? lotInfo : {}) }] });
     },
     deleteProduct(id) { return fs.deleteDoc(pRef(id)); },
+    subscribeOps(cb) {
+      return fs.onSnapshot(fs.query(opsCol, fs.orderBy("at", "desc"), fs.limit(80)), (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data(), at: x.data().at?.toMillis ? x.data().at.toMillis() : Date.now() }))), () => {});
+    },
+    subscribeMeta(cb) {
+      return fs.onSnapshot(metaCol, (snap) => { const m = {}; snap.docs.forEach((x) => { m[x.id] = x.data(); }); cb(m); }, () => {});
+    },
+    setMeta(key, data) {
+      if (!navigator.onLine) return Promise.reject(new OpError("offline", "Hors ligne."));
+      return fs.setDoc(fs.doc(metaCol, key), clean(data));
+    },
+    subscribeRecipes(cb) {
+      return fs.onSnapshot(recCol, (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data() }))), () => {});
+    },
+    async saveRecipe(r) {
+      const id = !r.id || r.id.startsWith("tmp") ? fs.doc(recCol).id : r.id;
+      await fs.setDoc(fs.doc(recCol, id), { ...clean({ ...r, id }), savedAt: fs.serverTimestamp() });
+      return id;
+    },
+    deleteRecipe(id) { return fs.deleteDoc(fs.doc(recCol, id)); },
+    async exportAll() {
+      const grab = async (c) => (await fs.getDocs(c)).docs.map((x) => ({ id: x.id, ...x.data() }));
+      return clean({ exportedAt: new Date().toISOString(), products: await grab(productsCol), shopping: await grab(fs.collection(db, ...base, "shopping")), recipes: await grab(recCol), meta: await grab(metaCol), operations: await grab(opsCol), barcodes: await grab(fs.collection(db, ...base, "barcodes")) });
+    },
     subscribeShopping(cb) {
       return fs.onSnapshot(fs.collection(db, ...base, "shopping"), (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data() }))), () => {});
     },

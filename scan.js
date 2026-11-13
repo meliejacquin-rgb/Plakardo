@@ -199,8 +199,7 @@ async function batchSave() {
     n += 1;
     const fresh = b.product ? ctx.getProducts().find((p) => p.id === b.product.id) : null;
     if (fresh) {
-      ctx.store.changeQty(fresh.id, q, by);
-      if (b.expiry && (!fresh.expiry || b.expiry < fresh.expiry)) ctx.store.updateProduct(fresh.id, { expiry: b.expiry });
+      safe(ctx.store.changeQty(fresh.id, q, by, { label: `Scan · ${fresh.name} +${q}`, ...(b.expiry ? { expiry: b.expiry, expiryType: fresh.categoryId === "alim" ? "DLC" : "unknown" } : {}) }));
       continue;
     }
     const name = b.name.trim();
@@ -208,7 +207,7 @@ async function batchSave() {
     const twin = ctx.getProducts().find((p) => p.categoryId === data.categoryId && p.name.toLowerCase() === name.toLowerCase());
     if (twin) {
       ctx.store.updateProduct(twin.id, { barcode: b.key });
-      ctx.store.changeQty(twin.id, q, by);
+      safe(ctx.store.changeQty(twin.id, q, by, { label: `Scan · ${twin.name} +${q}`, ...(b.expiry ? { expiry: b.expiry } : {}) }));
     } else {
       await ctx.store.addProduct({ ...data, quantity: q, expiry: b.expiry || null, minQuantity: 1, lowAlert: true, barcode: b.key, updatedBy: by });
     }
@@ -260,6 +259,9 @@ function resume(statusText) {
   loop();
 }
 
+// Les écritures de stock passent par une opération : une erreur (hors ligne, stock insuffisant) est affichée.
+function safe(pr) { Promise.resolve(pr).catch((e) => { console.error(e); try { ctx.onError && ctx.onError(e?.message || "Opération impossible"); } catch {} }); }
+
 async function confirm() {
   const { cur, form } = s;
   if (!cur || !form) return;
@@ -269,11 +271,10 @@ async function confirm() {
     const p = cur.product;
     if (s.mode === "remove") {
       const d = -Math.min(q, qtyOf(p));
-      if (d) ctx.store.changeQty(p.id, d, by);
+      if (d) safe(ctx.store.changeQty(p.id, d, by, { label: `Scan · ${p.name} −${-d}` }));
       resume(`${p.name} −${-d || 0}`);
     } else {
-      ctx.store.changeQty(p.id, q, by);
-      if (form.expiry && (!p.expiry || form.expiry < p.expiry)) ctx.store.updateProduct(p.id, { expiry: form.expiry });
+      safe(ctx.store.changeQty(p.id, q, by, { label: `Scan · ${p.name} +${q}`, ...(form.expiry ? { expiry: form.expiry, expiryType: p.categoryId === "alim" ? "DLC" : "unknown" } : {}) }));
       resume(`${p.name} +${q}`);
     }
     return;
@@ -284,8 +285,8 @@ async function confirm() {
   const data = { name, detail: (form.detail || "").trim(), categoryId: form.categoryId, unit: form.unit };
   const twin = ctx.getProducts().find((p) => p.categoryId === data.categoryId && p.name.toLowerCase() === name.toLowerCase());
   if (twin) {
-    ctx.store.updateProduct(twin.id, { barcode: cur.info.key, ...(form.expiry && (!twin.expiry || form.expiry < twin.expiry) ? { expiry: form.expiry } : {}) });
-    ctx.store.changeQty(twin.id, q, by);
+    ctx.store.updateProduct(twin.id, { barcode: cur.info.key });
+    safe(ctx.store.changeQty(twin.id, q, by, { label: `Scan · ${twin.name} +${q}`, ...(form.expiry ? { expiry: form.expiry } : {}) }));
   } else {
     await ctx.store.addProduct({ ...data, quantity: q, expiry: form.expiry || null, minQuantity: parseQ(form.minQuantity), barcode: cur.info.key, updatedBy: by });
   }

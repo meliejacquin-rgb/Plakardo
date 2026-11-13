@@ -1,12 +1,13 @@
 // Service worker : l'app s'ouvre même sans réseau.
 // Changer VERSION à chaque mise à jour publiée.
-const VERSION = "plakardo-v1-lot2-1";
+const VERSION = "plakardo-v2-2-1";
 const SHELL = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
   "data.js",
+  "engine.js",
   "scan.js",
   "codes.js",
   "firebase-config.js",
