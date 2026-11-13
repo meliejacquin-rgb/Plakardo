@@ -44,6 +44,7 @@ function demoStore() {
       { id: "d11", name: "Gel douche amande", detail: "", categoryId: "hyg", unit: "flacon", quantity: 2, minQuantity: 1, expiry: null },
     ],
     history: [],
+    barcodes: {},
   });
   let db;
   try { db = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { db = seed(); }
@@ -84,6 +85,8 @@ function demoStore() {
       db.products = db.products.filter((x) => x.id !== id);
       save();
     },
+    async getBarcode(key) { return (db.barcodes || {})[key] || null; },
+    async saveBarcode(key, data) { db.barcodes = db.barcodes || {}; db.barcodes[key] = data; save(); },
     async resetDemo() { db = seed(); save(); },
   };
 }
@@ -132,6 +135,15 @@ async function firebaseStore() {
       batch.commit().catch((e) => console.error("Écriture refusée", e));
     },
     deleteProduct(id) { return fs.deleteDoc(pRef(id)); },
+    async getBarcode(key) {
+      try {
+        const snap = await fs.getDoc(fs.doc(db, ...base, "barcodes", encodeURIComponent(key)));
+        return snap.exists() ? snap.data() : null;
+      } catch { return null; }
+    },
+    saveBarcode(key, data) {
+      return fs.setDoc(fs.doc(db, ...base, "barcodes", encodeURIComponent(key)), { ...data, key, updatedAt: fs.serverTimestamp() }, { merge: true }).catch(() => {});
+    },
   };
 }
 

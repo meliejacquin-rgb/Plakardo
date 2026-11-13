@@ -1,6 +1,7 @@
 // PLAKARDO – application (v1, socle)
 import { createStore, isDemo, displayName, resolveName } from "./data.js";
 import { household } from "./firebase-config.js";
+import { initScanner, openScanner, closeScanner, refreshScanner } from "./scan.js";
 
 // ───────────────────────── Référentiels ─────────────────────────
 const CATS = [
@@ -484,17 +485,6 @@ function viewProfil() {
   </main>${nav("profil")}`;
 }
 
-function viewScan() {
-  return `<main class="screen">
-    <h1>Scanner</h1>
-    <section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
-      <span class="pill mint">Bientôt</span>
-      <p style="margin:0">Le scan des codes-barres (simple et en rafale) arrive à la prochaine étape du développement.</p>
-      <a class="out-btn" style="display:inline-flex;align-items:center;text-decoration:none" href="#/ajout">Ajouter un produit à la main</a>
-    </section>
-  </main>${nav("scan")}`;
-}
-
 function viewLogin() {
   return `<main class="login">
     <img src="icons/icon-192.png" alt="" width="96" height="96">
@@ -534,12 +524,13 @@ function render() {
       case "produit": html = viewForm(r); break;
       case "alertes": html = viewAlertes(); break;
       case "profil": html = viewProfil(); break;
-      case "scan": html = viewScan(); break;
+      case "scan": html = viewHome(); break;
       default: html = viewHome();
     }
     html += toastHtml();
   }
   app.innerHTML = html;
+  if (user && route().name === "scan") openScanner(); else closeScanner();
   if (focusId) {
     const el = document.getElementById(focusId);
     if (el) {
@@ -647,6 +638,16 @@ async function start() {
     app.innerHTML = `<main class="login"><h1 class="h">Plakardo</h1><p class="err">Impossible de charger l’app. Vérifiez la connexion puis rouvrez-la.</p></main>`;
     return;
   }
+  initScanner({
+    store,
+    getProducts: () => products,
+    me,
+    cats: CATS,
+    units: UNITS,
+    plural: PLURAL,
+    catIcon: (id) => catIcon(id),
+    onClose: (hash) => go(hash || "#/"),
+  });
   store.onUser(async (u) => {
     if (u) await resolveName(u.email);
     user = u;
@@ -656,7 +657,7 @@ async function start() {
     dataError = "";
     if (u) {
       unsub = store.subscribe(
-        (list) => { products = list; loaded = true; render(); },
+        (list) => { products = list; loaded = true; render(); refreshScanner(); },
         (err) => {
           dataError = err?.code === "permission-denied"
             ? "Accès refusé : cette adresse e-mail n’est pas autorisée dans les règles du foyer."

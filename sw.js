@@ -1,12 +1,14 @@
 // Service worker : l'app s'ouvre même sans réseau.
 // Changer VERSION à chaque mise à jour publiée.
-const VERSION = "plakardo-v1-socle-3";
+const VERSION = "plakardo-v1-scan-1";
 const SHELL = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
   "data.js",
+  "scan.js",
+  "codes.js",
   "firebase-config.js",
   "manifest.webmanifest",
   "icons/icon-192.png",
@@ -30,7 +32,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
-  const cacheable = sameOrigin || url.host === "www.gstatic.com" || url.host.endsWith("fonts.googleapis.com") || url.host.endsWith("fonts.gstatic.com");
+  const cacheable = sameOrigin || url.host === "www.gstatic.com" || url.host.endsWith("jsdelivr.net") || url.host.endsWith("fonts.googleapis.com") || url.host.endsWith("fonts.gstatic.com");
   if (!cacheable) return; // Firestore, connexion… : jamais intercepté
 
   // Réseau d'abord pour l'app (mises à jour immédiates), cache si hors ligne.
