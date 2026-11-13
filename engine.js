@@ -324,19 +324,46 @@ export function buildPrompt({ products, locations, filters, prefs, mode, now = n
 const ALLOWED_UNITS = ["g", "kg", "ml", "cl", "dl", "l", "pièce", "pièces", "c. à soupe", "c. à café", "pincée", "pincées", "gousse", "gousses", "tranche", "tranches", "feuille", "feuilles", "botte", "bottes", "boîte", "boîtes", "sachet", "sachets"];
 const MAX_BY_DIM = { mass: 5000, vol: 5000 };
 
+// Lecture tolérante de la réponse copiée depuis Claude (guillemets typographiques, virgules en trop,
+// dessins mal échappés, bloc de code absent ou non refermé).
+function tryParse(s) { try { return JSON.parse(s); } catch { return null; } }
+function cleanJson(s) {
+  return s.replace(/^\uFEFF/, "").replace(/[\u201C\u201D\u201E]/g, '"').replace(/[\u2018\u2019]/g, "'")
+    .replace(/\u00A0/g, " ").replace(/,\s*([}\]])/g, "$1");
+}
+function sliceObject(body) {
+  const a = body.indexOf("{"), b = body.lastIndexOf("}");
+  return a === -1 || b <= a ? null : body.slice(a, b + 1);
+}
 function extractJson(text) {
   const t = String(text || "");
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = fence ? fence[1] : t;
-  const a = body.indexOf("{"), b = body.lastIndexOf("}");
-  if (a === -1 || b <= a) return null;
-  try { return JSON.parse(body.slice(a, b + 1)); } catch { return null; }
+  const bodies = [];
+  const fences = [...t.matchAll(/```[a-zA-Z]*\s*([\s\S]*?)```/g)].map((m) => m[1]).filter((x) => x.includes("recettes"));
+  bodies.push(...fences);
+  const open = t.match(/```[a-zA-Z]*\s*([\s\S]*)$/); // bloc non refermé
+  if (open && open[1].includes("recettes")) bodies.push(open[1]);
+  bodies.push(t);
+  for (const body of bodies) {
+    const obj = sliceObject(body);
+    if (!obj) continue;
+    const direct = tryParse(obj) || tryParse(cleanJson(obj));
+    if (direct) return direct;
+    // Dessins qui cassent le JSON : on les met de côté puis on les rattache dans l'ordre.
+    const svgs = [];
+    const stripped = obj.replace(/"dessin_svg"\s*:\s*"(<svg[\s\S]*?<\/svg>)\s*"/g, (_, svg) => { svgs.push(svg.replace(/\\"/g, "'").replace(/\\n/g, " ")); return '"dessin_svg":null'; });
+    const data = tryParse(stripped) || tryParse(cleanJson(stripped));
+    if (data) {
+      if (Array.isArray(data.recettes) && svgs.length === data.recettes.length) data.recettes.forEach((r, i) => { if (r) r.dessin_svg = svgs[i].replace(/"/g, "'"); });
+      return data;
+    }
+  }
+  return null;
 }
 
 // Valide strictement la réponse (AI-02/03, T14). L'IA n'écrit jamais en stock : on ne fait que lire.
 export function parseRecipes(text, products) {
   const data = extractJson(text);
-  if (!data || !Array.isArray(data.recettes)) return { recipes: [], errors: ["Réponse illisible : copiez tout le message de Claude, bloc ```json compris."], blocage: null };
+  if (!data || !Array.isArray(data.recettes)) return { recipes: [], errors: [String(text || "").includes("recettes") ? "Réponse incomplète ou abîmée : dans Claude, touchez Copier sous la réponse entière (pas seulement une partie), puis recommencez." : "Ce n’est pas la réponse de Claude : copiez-la avec le bouton Copier sous sa réponse."], blocage: null };
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
   const recipes = [], errors = [];
   data.recettes.forEach((r, i) => {

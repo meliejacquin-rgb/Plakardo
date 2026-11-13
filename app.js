@@ -1079,7 +1079,7 @@ function viewRecettes() {
       <span class="eyebrow" style="margin-top:4px">2 · Revenir ici</span>
       <button class="cta" style="background:var(--ink);color:var(--bg)" data-act="rec-clip" ${ui.busy ? "disabled" : ""}>Coller la réponse de Claude</button>
       ${ui.recMode === "week" ? `<span class="s">Plakardo range les recettes jour par jour et ajoute ce qui manque à la liste de courses.</span>` : ""}
-      <details><summary class="s" style="cursor:pointer;text-decoration:underline">Coller à la main</summary>
+      <details ${ui.recManual ? "open" : ""}><summary class="s" style="cursor:pointer;text-decoration:underline">Coller à la main</summary>
         <textarea id="rec-paste" class="input" data-recpaste rows="4" placeholder="Collez ici toute la réponse de Claude" style="min-height:96px;padding:10px;font-family:inherit;margin-top:8px" aria-label="Réponse de Claude">${esc(ui.recPaste)}</textarea>
         <button class="out-btn" style="width:100%;margin-top:8px" data-act="rec-read">Lire la réponse</button></details>
     </section>
@@ -1344,7 +1344,8 @@ async function lotSheetGo() {
 async function readRecipes() {
   const res = E.parseRecipes(ui.recPaste, products);
   if (!res.recipes.length && !res.blocage) {
-    showToast(/recettes/.test(ui.recPaste) ? (res.errors[0] || "Réponse illisible") : "Le presse-papiers ne contient pas la réponse de Claude : copiez-la d’abord");
+    showToast(res.errors[0] || "Réponse illisible");
+    ui.recManual = true;
     if (res.errors.length > 1) ui.recParsed = res;
     render(); return;
   }
@@ -1527,8 +1528,12 @@ app.addEventListener("click", (e) => {
       break;
     }
     case "rec-clip":
-      if (!navigator.clipboard?.readText) { showToast("Collage automatique indisponible : utilisez « Coller à la main »"); render(); break; }
-      navigator.clipboard.readText().then((txt) => { ui.recPaste = txt || ""; readRecipes(); }).catch(() => { showToast("Autorisez le collage, ou utilisez « Coller à la main »"); render(); });
+      const manual = (msg) => { ui.recManual = true; showToast(msg); render(); setTimeout(() => document.getElementById("rec-paste")?.focus(), 80); };
+      if (!navigator.clipboard?.readText) { manual("Appuyez longuement dans la zone, puis « Coller »"); break; }
+      navigator.clipboard.readText().then((txt) => {
+        if (!txt || !txt.trim()) { manual("Presse-papiers vide : appuyez longuement dans la zone, puis « Coller »"); return; }
+        ui.recPaste = txt; readRecipes();
+      }).catch(() => manual("Appuyez longuement dans la zone, puis « Coller »"));
       break;
     case "rec-read": readRecipes(); break;
     case "rec-clear": ui.recParsed = null; saveParsed(); render(); break;
@@ -1633,6 +1638,12 @@ app.addEventListener("input", (e) => {
     ui.form[t.dataset.field] = t.value;
     if (t.type === "date") render();
   }
+});
+
+app.addEventListener("paste", (e) => {
+  if (!e.target.matches || !e.target.matches("[data-recpaste]")) return;
+  const txt = e.clipboardData && e.clipboardData.getData("text");
+  if (txt) { e.preventDefault(); ui.recPaste = txt; readRecipes(); }
 });
 
 app.addEventListener("submit", async (e) => {
