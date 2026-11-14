@@ -5,6 +5,7 @@ import { BOOK } from "./recipes.js";
 import { household } from "./firebase-config.js";
 import { parseDateText, lookupOFF } from "./codes.js";
 import { parseReceipt, lineKey } from "./receipt.js";
+import { parsePhrase, estimateShelfDays } from "./quickadd.js";
 import { initScanner, openScanner, closeScanner, refreshScanner } from "./scan.js";
 
 // ───────────────────────── Référentiels ─────────────────────────
@@ -14,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.6.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -879,20 +880,154 @@ function quickAddChips(p) {
   return opts.map(([q, t]) => `<button class="chip sm" style="background:var(--mint-soft);color:var(--mint-ink);border:0;font-weight:700" data-act="qadd" data-id="${p.id}" data-v="${q}">${esc(t)}</button>`).join("")
     + `<a class="chip sm" style="display:inline-flex;align-items:center;text-decoration:none" href="#/produit/${p.id}?lot=1">Autre…</a>`;
 }
+const IC = {
+  photo: (s) => svg('<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>', s),
+  ticket: (s) => svg('<path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z"/><path d="M9 8h6M9 12h6"/>', s),
+  mic: (s) => svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', s),
+  barcode: (s) => svg('<path d="M4 7V5h3M17 5h3v2M20 17v2h-3M7 19H4v-2M8 8v8M11 8v8M14 8v8M17 8v8"/>', s),
+};
+const SR = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 function viewAjouter() {
+  const mode = ui.addMode || "ticket";
+  const tile = (k, label) => `<button class="add-tile" data-act="addmode" data-v="${k}" aria-pressed="${mode === k}">${IC[k](26)}<span>${label}</span></button>`;
   const q = ui.addSearch.trim().toLowerCase();
   const hits = q ? products.filter((p) => `${p.name} ${p.detail || ""}`.toLowerCase().includes(q)).sort(byName).slice(0, 8) : [];
   const rec = recentAdds();
+  const qa = ui.qa || (ui.qa = { text: "", target: "stock" });
+  let panel = "";
+  if (mode === "photo") {
+    panel = `<div class="add-head">${IC.photo(30)}<span><span class="add-title">Photographiez votre ticket</span><span class="add-sub">Plakardo lit la photo lui-même, gratuitement. Pour un long ticket, prenez 2 photos (haut puis bas).</span></span></div>
+      ${ui.ocr ? `<div class="ok-box">${esc(ui.ocr.msg)}</div>` : `
+      <label class="cta" style="cursor:pointer">${IC.photo(20)} Prendre la photo<input type="file" accept="image/*" capture="environment" data-tkimg hidden></label>
+      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Choisir dans Photos (1 ou 2 photos)<input type="file" accept="image/*" multiple data-tkimg hidden></label>`}
+      <span class="add-sub">Astuce : ticket bien à plat, en pleine lumière, cadré au plus près. Pour une lecture encore plus fiable, utilisez l’onglet Ticket (lecture de l’iPhone).</span>`;
+  } else if (mode === "ticket") {
+    panel = `<div class="add-head">${IC.ticket(30)}<span><span class="add-title">Importez votre ticket</span><span class="add-sub">Les articles sont identifiés en une seule opération, et le montant va dans le budget.</span></span></div>
+      <a class="cta" href="#/ticket" data-act="tk-new">Scanner le ticket avec l’iPhone</a>
+      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>`;
+  } else if (mode === "mic") {
+    panel = `<div class="add-head">${IC.mic(30)}<span><span class="add-title">Dites vos courses</span><span class="add-sub">« Chez Lidl : deux yaourts, un kilo de pommes 2 euros 50, du poulet, total 12 euros »</span></span></div>
+      <div class="seg" role="group" style="grid-auto-columns:1fr"><button data-act="qa-target" data-v="stock" aria-pressed="${qa.target === "stock"}">Ranger dans le stock</button><button data-act="qa-target" data-v="courses" aria-pressed="${qa.target === "courses"}">Ajouter aux courses</button></div>
+      <button class="mic-btn${ui.listening ? " on" : ""}" data-act="mic">${IC.mic(30)}<span>${ui.listening ? "J’écoute… touchez pour arrêter" : "Toucher pour parler"}</span></button>
+      <textarea id="qa-text" class="input" data-qatext rows="3" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
+      <button class="cta" data-act="qa-go" ${qa.text.trim() ? "" : "disabled"}>${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
+      <span class="add-sub">Les prix sont facultatifs. Sans prix, le budget utilise les derniers prix connus. Les dates de péremption sont estimées automatiquement.</span>`;
+  } else {
+    panel = `<div class="add-head">${IC.barcode(30)}<span><span class="add-title">Scannez les codes-barres</span><span class="add-sub">Produit par produit, ou en rafale pour un sac entier.</span></span></div>
+      <a class="cta" href="#/scan?mode=add">Scanner un produit</a>
+      <a class="out-btn" href="#/scan?mode=batch" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Scanner en rafale</a>`;
+  }
+  const lastAdded = (() => {
+    const out = [];
+    for (const o of ops) {
+      if (o.compensatedBy || !["add", "store"].includes(o.type)) continue;
+      for (const l of o.lines || []) if (l.delta > 0 && !out.some((x) => x.id === l.productId)) out.push({ id: l.productId, name: l.name, q: l.delta, unit: l.unit });
+      if (out.length >= 5) break;
+    }
+    return out.slice(0, 5);
+  })();
   return `<main class="screen no-nav">${offlineBanner()}
-    <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Ajouter</h1><span class="sub">Recherche, récents ou scan</span></div></div>
-    <label class="search">${I.search(18)}<input id="add-search" type="search" data-addsearch placeholder="Rechercher ou créer un produit…" value="${esc(ui.addSearch)}" autocomplete="off" aria-label="Rechercher un produit"></label>
+    <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Ajouter des produits</h1></div>
+      <a class="icon-btn" href="#/ajout" aria-label="Nouveau produit (fiche complète)">${I.plus(20)}</a></div>
+    <div class="add-tiles">${tile("photo", "Photo")}${tile("ticket", "Ticket")}${tile("mic", "Voix")}${tile("barcode", "Code-barres")}</div>
+    <section class="card add-panel">${panel}
+      ${lastAdded.length ? `<div class="add-sep"></div><span class="t" style="font-family:Nunito,sans-serif;font-weight:900">Derniers produits ajoutés</span>
+        ${lastAdded.map((x) => `<div class="row-between add-row"><span style="display:flex;align-items:center;gap:10px"><span style="color:var(--mint-ink)">${svg('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>', 22, 2)}</span>${esc(x.name)}</span><span class="s">+${fmtQ(x.q)} ${esc(x.unit || "")}</span></div>`).join("")}` : ""}
+    </section>
+    <label class="search">${I.search(18)}<input id="add-search" type="search" data-addsearch placeholder="Ajout rapide : rechercher un produit…" value="${esc(ui.addSearch)}" autocomplete="off" aria-label="Rechercher un produit"></label>
     <div id="add-results" style="display:flex;flex-direction:column;gap:10px">${addResults(hits, q)}</div>
-    ${rec.length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Récents</h2><div class="chips">${rec.map(({ p, d }) => `<button class="chip sm" style="background:var(--mint-soft);color:var(--mint-ink);border:0;font-weight:700" data-act="qadd" data-id="${p.id}" data-v="${d}">${esc(p.name)} +${fmtQ(d)} ${esc(p.unit || "")}</button>`).join("")}</div></section>` : ""}
-    <a class="cta" href="#/ticket" style="background:var(--primary);color:var(--primary-ink)">Ticket de caisse (tout d’un coup)</a>
-    <a class="cta" href="#/scan?mode=batch" style="background:var(--ink);color:var(--bg)">Scanner plusieurs produits</a>
-    <a class="cta" href="#/ajout" style="background:var(--surface);color:var(--primary);border:1px solid var(--primary)">Nouveau produit (fiche complète)</a>
+    ${rec.length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Ajouts fréquents</h2><div class="chips">${rec.map(({ p, d }) => `<button class="chip sm" style="background:var(--mint-soft);color:var(--mint-ink);border:0;font-weight:700" data-act="qadd" data-id="${p.id}" data-v="${d}">${esc(p.name)} +${fmtQ(d)} ${esc(p.unit || "")}</button>`).join("")}</div></section>` : ""}
   </main>`;
 }
+
+// ---- Dictée ----
+let recog = null;
+function toggleMic() {
+  if (ui.listening && recog) { try { recog.stop(); } catch {} return; }
+  if (!SR) { micFallback("Dictée directe indisponible ici : touchez la zone puis le micro du clavier"); return; }
+  const base = (ui.qa.text || "").trim();
+  try {
+    recog = new SR();
+    recog.lang = "fr-FR"; recog.interimResults = true; recog.continuous = true;
+    let finalTxt = "";
+    recog.onresult = (ev) => {
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) finalTxt += (finalTxt ? ", " : "") + r[0].transcript.trim(); else interim += r[0].transcript;
+      }
+      ui.qa.text = [base, finalTxt, interim.trim()].filter(Boolean).join(base || finalTxt ? ", " : "");
+      const el = document.getElementById("qa-text"); if (el) el.value = ui.qa.text;
+    };
+    recog.onerror = (ev) => { ui.listening = false; if (["not-allowed", "service-not-allowed", "audio-capture"].includes(ev.error)) micFallback("Micro non autorisé : utilisez le micro du clavier, ou autorisez le micro dans Réglages › Safari"); else render(); };
+    recog.onend = () => { ui.listening = false; render(); };
+    recog.start(); ui.listening = true; render();
+  } catch { micFallback("Dictée directe indisponible : touchez la zone puis le micro du clavier"); }
+}
+function micFallback(msg) {
+  ui.listening = false; showToast(msg); render();
+  setTimeout(() => document.getElementById("qa-text")?.focus(), 60);
+}
+async function quickAddGo() {
+  const r = parsePhrase(ui.qa.text);
+  if (!r.items.length) { showToast("Je n’ai reconnu aucun produit : essayez « deux yaourts, du lait »"); render(); return; }
+  if (ui.qa.target === "courses") {
+    if (!canWrite()) return;
+    let n = 0;
+    for (const it of r.items) {
+      const g = guessCat({ category: "" }, it.name);
+      const p = (g === "alim" ? E.matchProduct(it.name, products) : null) || products.find((x) => ((g === "chat") === (x.categoryId === "chat")) && (E.normTxt(x.name).includes(E.normTxt(it.name)) || E.normTxt(it.name).includes(E.normTxt(x.name))));
+      const qtyTxt = it.unit && !["pièce", ""].includes(it.unit) ? `${fmtQ(it.qty)} ${it.unit}` : "";
+      if (p) store.setShopping(`p_${p.id}`, { productId: p.id, forced: true, checked: false, state: "todo", qty: it.unit && ["g", "kg", "l", "cl", "ml"].includes(it.unit) ? (parseQ(p.packSize) || 1) : it.qty, sources: ["Dictée"] });
+      else store.addShopping({ label: it.name + (qtyTxt ? ` (${qtyTxt})` : ""), qty: it.unit ? 1 : it.qty, checked: false, state: "todo", sources: ["Dictée"] });
+      n += 1;
+    }
+    ui.qa.text = "";
+    showToast(`${plural(n, "article ajouté", "articles ajoutés")} à la liste de courses`);
+    go("#/courses"); return;
+  }
+  const mass = ["g", "kg", "l", "cl", "ml"];
+  const items = r.items.map((it) => ({ label: it.name, qty: mass.includes(it.unit) ? 1 : it.qty, weight: mass.includes(it.unit) ? { value: it.qty, unit: it.unit } : null, unitHint: mass.includes(it.unit) ? it.unit : it.unit || "pièce", price: it.price, kind: "item" }));
+  ui.tk = { step: "review", source: "voice", store: r.store, storeCat: "", date: E.todayIso(), total: r.total, lines: [] };
+  ui.tk.lines = await prepareLines(items, r.store || "dictee", "");
+  ui.qa.text = "";
+  go("#/ticket"); render();
+}
+
+// ---- Photo du ticket : lecture dans l'app (Tesseract, gratuit) ----
+async function prepImage(file) {
+  const bmp = await createImageBitmap(file);
+  const maxW = 1800, scale = Math.min(2, maxW / bmp.width);
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  const ctx = c.getContext("2d");
+  ctx.filter = "grayscale(1) contrast(1.6) brightness(1.1)";
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  return c;
+}
+async function ocrTicket(files) {
+  ui.ocr = { msg: "Préparation de la lecture… (la première fois, 10 à 20 s)" }; render();
+  try {
+    const T = await import("https://fastly.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
+    const worker = await T.createWorker(["fra", "deu"], 1, { logger: (m) => {
+      if (m.status === "recognizing text") { ui.ocr = { msg: `Lecture du ticket… ${Math.round(m.progress * 100)} %` }; const el = document.querySelector(".ok-box"); if (el) el.textContent = ui.ocr.msg; }
+    } });
+    await worker.setParameters({ preserve_interword_spaces: "1" });
+    const texts = [];
+    for (const f of files) { const img = await prepImage(f); const { data } = await worker.recognize(img); texts.push(data.text); }
+    await worker.terminate();
+    ui.ocr = null;
+    ui.tk = { step: "text", text: texts.join("\n") };
+    go("#/ticket");
+    await readTicket();
+    if (ui.tk.step === "text") showToast("Photo peu lisible : corrigez le texte ou utilisez l’onglet Ticket");
+  } catch (e) {
+    console.error(e); ui.ocr = null;
+    showToast("Lecture de la photo impossible (réseau ?) : utilisez l’onglet Ticket");
+  }
+  render();
+}
+
 function addResults(hits, q) {
   if (!q) return "";
   return `<div class="card" style="padding:4px 14px">${hits.map((p) => `<div style="padding:8px 0;border-bottom:1px solid var(--soft);display:flex;flex-direction:column;gap:6px">
@@ -1552,27 +1687,47 @@ function stockAmount(line, p) {
   }
   return line.qty * (line.pack > 1 ? line.pack : 1);
 }
-async function readTicket() {
-  const text = ui.tk?.text || "";
-  const r = parseReceipt(text);
-  if (!r.items.length) { showToast("Aucun article reconnu : vérifiez que le texte du ticket est complet"); render(); return; }
-  ui.tk = { ...ui.tk, step: "review", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, sum: r.sum, lines: [] };
-  const keys = r.items.map((it) => lineKey(r.store, it));
+// Lignes à vérifier (ticket, PDF ou dictée) : produit reconnu, quantité, date estimée.
+async function prepareLines(items, storeName, storeCat) {
+  const keys = items.map((it) => lineKey(storeName || "dictee", it));
   let mem = {};
   try { mem = await store.getReceiptMap(keys); } catch {}
-  ui.tk.lines = r.items.map((it, i) => {
+  return items.map((it, i) => {
     const byEan = it.ean ? products.find((p) => p.barcode === it.ean) : null;
     const known = mem[keys[i]] && find(mem[keys[i]].productId);
     // Libellé de commande drive « Nom - Marque - 260g » → nom court.
     const short = it.label.split(" - ")[0].replace(/\*+/g, "").trim();
     const nl = E.normTxt(it.label);
-    const fuzzy = products.filter((p) => { const pn = E.normTxt(p.name); return pn.length >= 4 && (nl.includes(pn) || E.normTxt(short) === pn); }).sort((x, y) => y.name.length - x.name.length)[0];
+    // Pas de croisement de rayons : « poulet » ne doit pas devenir la pâtée « poulet en sauce » du chat.
+    const guess = guessCat({ category: storeCat }, it.label, it.category);
+    const sameAisle = (p) => (guess === "chat") === (p.categoryId === "chat");
+    const fuzzy = (guess === "alim" ? E.matchProduct(short, products) : null)
+      || products.filter((p) => { const pn = E.normTxt(p.name); return sameAisle(p) && pn.length >= 4 && (nl.includes(pn) || E.normTxt(short) === pn || pn.includes(E.normTxt(short))); }).sort((x, y) => y.name.length - x.name.length)[0];
     const p = byEan || known || fuzzy || null;
-    const cat = p ? p.categoryId : guessCat({ category: r.category }, it.label, it.category);
-    const line = { ...it, key: keys[i], include: it.kind === "item", productId: p ? p.id : "new", newName: short + (it.weight && !/\d\s?(g|kg|ml|cl|l)\b/i.test(short) && r.store === "Fressnapf" ? ` ${fmtQ(it.weight.value)} ${it.weight.unit}` : ""), newCat: cat, newUnit: "pièce", dateText: "", expiry: "" };
+    const cat = p ? p.categoryId : guess;
+    const line = { ...it, key: keys[i], include: it.kind === "item", productId: p ? p.id : "new",
+      newName: short + (it.weight && !/\d\s?(g|kg|ml|cl|l)\b/i.test(short) && storeName === "Fressnapf" ? ` ${fmtQ(it.weight.value)} ${it.weight.unit}` : ""),
+      newCat: cat, newUnit: it.unitHint || "pièce", dateText: "", expiry: "" };
     line.amount = stockAmount(line, p);
+    applyEstimate(line);
     return line;
   });
+}
+// Date estimée selon le type de produit (modifiable) : évite de saisir chaque DLC.
+function applyEstimate(l) {
+  if (l.expiry && !l.estimated) return;
+  const p = l.productId !== "new" ? find(l.productId) : null;
+  const days = estimateShelfDays(p ? p.name : (l.newName || l.label), p ? p.categoryId : l.newCat);
+  if (days == null) { if (l.estimated) { l.expiry = ""; l.dateText = ""; l.estimated = false; } return; }
+  const dd = new Date(); dd.setDate(dd.getDate() + days);
+  l.expiry = localDate(dd); l.dateText = ""; l.estimated = true;
+}
+async function readTicket() {
+  const text = ui.tk?.text || "";
+  const r = parseReceipt(text);
+  if (!r.items.length) { showToast("Aucun article reconnu : vérifiez que le texte du ticket est complet"); render(); return; }
+  ui.tk = { ...ui.tk, step: "review", source: "ticket", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, sum: r.sum, lines: [] };
+  ui.tk.lines = await prepareLines(r.items, r.store, r.category);
   render();
   // Noms des produits inconnus via les codes EAN (Open Food Facts et mémoire du foyer).
   const unknown = ui.tk.lines.filter((l) => l.productId === "new" && l.ean);
@@ -1583,6 +1738,7 @@ async function readTicket() {
         l.newName = tpl.name || l.newName;
         if (tpl.categoryId) l.newCat = tpl.categoryId;
         if (tpl.unit) l.newUnit = tpl.unit;
+        applyEstimate(l);
         render();
       }
     } catch {}
@@ -1591,6 +1747,15 @@ async function readTicket() {
 function tkProductOptions(sel) {
   const groups = CATS.map((c) => `<optgroup label="${c.name}">${products.filter((p) => p.categoryId === c.id).sort(byName).map((p) => `<option value="${p.id}" ${sel === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
   return `<option value="new" ${sel === "new" ? "selected" : ""}>＋ Nouveau produit</option>${groups}`;
+}
+function lineEstimate(l) {
+  const p = l.productId && l.productId !== "new" ? find(l.productId) : null;
+  return p && p.lastPrice && l.amount ? p.lastPrice * parseQ(l.amount) : null;
+}
+function lineCost(l) { return l.price != null ? l.price : lineEstimate(l); }
+function effectiveTotal(t) {
+  if (t.total != null && t.total !== "") return Number(t.total);
+  return Math.round(t.lines.reduce((n, l) => n + (lineCost(l) || 0), 0) * 100) / 100;
 }
 function viewTicket() {
   const t = ui.tk || (ui.tk = { step: "text", text: "" });
@@ -1607,14 +1772,17 @@ function viewTicket() {
     </main><div class="cta-bar"><button class="cta" data-act="tk-read" ${t.text.trim() ? "" : "disabled"}>Lire le ticket</button></div>`;
   }
   const inc = t.lines.filter((l) => l.include);
-  const sumInc = Math.round(t.lines.reduce((n, l) => n + l.price, 0) * 100) / 100;
+  const voice = t.source === "voice";
+  const sumInc = Math.round(t.lines.reduce((n, l) => n + (lineCost(l) || 0), 0) * 100) / 100;
+  const tot = effectiveTotal(t);
   const card = (l, i) => {
     const p = l.productId !== "new" ? find(l.productId) : null;
     const cat = p ? p.categoryId : l.newCat;
     const unit = p ? p.unit || "pièce" : l.newUnit;
     return `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;${l.include ? "" : "opacity:.55"}">
-      <div class="row-between" style="gap:8px"><span class="grow" style="min-width:0"><span class="t" style="display:block">${esc(l.label)}</span><span class="s" style="display:block">${l.qty > 1 ? `${l.qty} × ${euro(l.unitPrice)} · ` : ""}${l.weight ? `${fmtQ(l.weight.value)} ${l.weight.unit}` : ""}${l.ean ? ` · EAN ${l.ean}` : ""}${l.kind === "deposit" ? " · consigne" : ""}</span></span>
-        <strong class="h" style="font-size:16px">${euro(l.price)}</strong></div>
+      <div class="row-between" style="gap:8px"><span class="grow" style="min-width:0"><span class="t" style="display:block">${esc(l.label)}</span><span class="s" style="display:block">${l.qty > 1 && l.unitPrice ? `${l.qty} × ${euro(l.unitPrice)} · ` : ""}${l.weight ? `${fmtQ(l.weight.value)} ${l.weight.unit}` : ""}${l.ean ? ` · EAN ${l.ean}` : ""}${l.kind === "deposit" ? " · consigne" : ""}</span></span>
+        ${voice ? `<span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:68px;border:1px solid var(--border);font-size:15px" inputmode="decimal" data-tkprice="${i}" value="${l.price != null ? fmtQ(l.price) : ""}" placeholder="${lineEstimate(l) != null ? fmtQ(Math.round(lineEstimate(l) * 100) / 100) : "prix"}" aria-label="Prix"><span class="s">€</span></span>`
+          : `<strong class="h" style="font-size:16px">${euro(l.price)}</strong>`}</div>
       ${l.kind === "deposit" ? `<span class="s">Consigne : comptée dans la dépense, pas dans le stock.</span>` : `
       <button class="chip sm" data-act="tk-inc" data-i="${i}" aria-pressed="${l.include}" style="align-self:flex-start">${l.include ? "Ranger dans le stock" : "Ne pas ranger (dépense seulement)"}</button>
       ${l.include ? `<select class="input sm" data-tkp="${i}" aria-label="Produit du stock">${tkProductOptions(l.productId)}</select>
@@ -1622,19 +1790,21 @@ function viewTicket() {
         <div class="chips">${CATS.map((c) => `<button class="chip sm" data-act="tk-cat" data-i="${i}" data-v="${c.id}" aria-pressed="${l.newCat === c.id}">${c.name}</button>`).join("")}</div>` : ""}
       <div class="row-between"><span class="label">Quantité à ranger</span><span style="display:flex;align-items:center;gap:6px"><input class="qinput sm" style="width:70px;border:1px solid var(--border)" inputmode="decimal" data-tkq="${i}" value="${fmtQ(l.amount)}" aria-label="Quantité"><span class="s">${esc(unit)}</span></span></div>
       ${DATED_CATS.includes(cat) ? `<input class="input sm" inputmode="numeric" data-tkd="${i}" value="${esc(l.dateText)}" placeholder="${cat === "pharma" ? "Péremption" : "DLC"} facultative : JJ/MM/AA (ou Scanner du texte)" aria-label="Date de ${esc(l.label)}">
-        <div class="chips">${[[3, "+3 j"], [7, "+1 sem."], [30, "+1 mois"], [180, "+6 mois"]].map(([n, lab]) => `<button class="chip sm" data-act="tk-date" data-i="${i}" data-v="${n}">${lab}</button>`).join("")}${l.expiry ? `<span class="s" style="align-self:center;color:var(--mint-ink);font-weight:700">${frDate(l.expiry)}</span>` : ""}</div>` : ""}` : ""}`}
+        <div class="chips">${[[3, "+3 j"], [7, "+1 sem."], [30, "+1 mois"], [180, "+6 mois"]].map(([n, lab]) => `<button class="chip sm" data-act="tk-date" data-i="${i}" data-v="${n}">${lab}</button>`).join("")}${l.expiry ? `<span class="s" style="align-self:center;color:var(--mint-ink);font-weight:700">${l.estimated ? "≈ " : ""}${frDate(l.expiry)}${l.estimated ? " (estimée)" : ""}</span>` : ""}</div>` : ""}` : ""}`}
     </div>`;
   };
   return `<main class="screen no-nav">${offlineBanner()}
-    <div class="top"><button class="icon-btn" data-act="tk-back" aria-label="Retour">${I.back(22)}</button><div class="grow"><h1 style="font-size:24px">Vérifier le ticket</h1><span class="sub">${plural(t.lines.length, "ligne lue", "lignes lues")} · Plakardo retient vos choix pour la prochaine fois</span></div></div>
+    <div class="top"><button class="icon-btn" data-act="tk-back" aria-label="Retour">${I.back(22)}</button><div class="grow"><h1 style="font-size:24px">${voice ? "Vérifier la dictée" : "Vérifier le ticket"}</h1><span class="sub">${plural(t.lines.length, voice ? "article compris" : "ligne lue", voice ? "articles compris" : "lignes lues")} · Plakardo retient vos choix pour la prochaine fois</span></div></div>
     <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div class="row-between"><span class="label">Magasin</span><input class="input sm" style="max-width:190px" data-tkstore value="${esc(t.store)}" placeholder="Ex. Lidl Kehl"></div>
       <div class="row-between"><span class="label">Date</span><input class="input sm" style="max-width:190px" type="date" data-tkdate value="${esc(t.date)}"></div>
-      <div class="row-between"><span class="label">Total du ticket</span><strong class="h">${euro(t.total)}</strong></div>
+      ${voice ? `<div class="row-between"><span class="label">Total payé</span><span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:86px;border:1px solid var(--border);font-size:16px" inputmode="decimal" data-tktotal value="${t.total != null ? fmtQ(t.total) : ""}" placeholder="${sumInc ? fmtQ(sumInc) : "facultatif"}" aria-label="Total payé"><span class="s">€</span></span></div>
+      <span class="s">${t.total != null ? "Total indiqué : il va dans le budget." : sumInc ? "Sans total, le budget utilise les prix indiqués ou estimés (derniers prix connus)." : "Facultatif : indiquez un total ou des prix pour le budget."}</span>` : `<div class="row-between"><span class="label">Total du ticket</span><strong class="h">${euro(t.total)}</strong></div>
       ${Math.abs(sumInc - t.total) > 0.05 ? `<span class="s warn">Somme des lignes lues : ${euro(sumInc)}. Une ligne a peut-être été mal lue : vérifiez ou rescannez.</span>` : `<span class="s" style="color:var(--mint-ink);font-weight:700">Toutes les lignes correspondent au total.</span>`}
+    `}
     </section>
     ${t.lines.map(card).join("")}
-  </main><div class="cta-bar"><button class="cta" data-act="tk-go" ${ui.busy ? "disabled" : ""}>Ranger ${plural(inc.length, "article", "articles")} · ${euro(t.total)}</button></div>`;
+  </main><div class="cta-bar"><button class="cta" data-act="tk-go" ${ui.busy ? "disabled" : ""}>Ranger ${plural(inc.length, "article", "articles")}${tot ? ` · ${voice && t.total == null ? "≈ " : ""}${euro(tot)}` : ""}</button></div>`;
 }
 async function ticketGo() {
   if (!canWrite()) return;
@@ -1668,22 +1838,23 @@ async function ticketGo() {
     if (lines.length) await store.runOp({ id: opId, type: "store", label: `Ticket ${t.store || "de caisse"} · ${plural(lines.length, "article", "articles")}`, by: me(), lines });
     const items = t.lines.map((l) => {
       const p = l.productId && l.productId !== "new" ? find(l.productId) : null;
-      return { label: l.label, price: l.price, qty: l.qty, productId: l.include && l.productId !== "new" ? l.productId : null, categoryId: l.kind === "deposit" ? "autre" : (p ? p.categoryId : l.newCat) || "alim" };
+      return { label: l.label, price: Math.round((lineCost(l) || 0) * 100) / 100, estimated: l.price == null, qty: l.qty, productId: l.include && l.productId !== "new" ? l.productId : null, categoryId: l.kind === "deposit" ? "autre" : (p ? p.categoryId : l.newCat) || "alim" };
     });
-    await store.addPurchase({ store: (t.store || "").trim() || "Magasin", date: t.date || E.todayIso(), total: t.total, items, by: me(), source: "ticket", at: Date.now() });
+    const total = effectiveTotal(t);
+    if (total > 0) await store.addPurchase({ store: (t.store || "").trim() || (t.source === "voice" ? "Achat dicté" : "Magasin"), date: t.date || E.todayIso(), total, estimated: t.source === "voice" && t.total == null, items, by: me(), source: t.source || "ticket", at: Date.now() });
     // Mémoire : libellé du ticket → produit ; prix habituel du produit ; liste de courses à jour.
     for (const l of t.lines) {
       if (!l.include || l.kind !== "item" || !l.productId || l.productId === "new") continue;
       store.saveReceiptMap(l.key, { productId: l.productId, label: l.label, store: t.store || "" });
       if (l.ean && l.createdName) store.saveBarcode(l.ean, { name: l.createdName, categoryId: l.newCat, unit: l.newUnit || "pièce" });
       const amt = parseQ(l.amount);
-      if (amt > 0 && find(l.productId)) store.updateProduct(l.productId, { lastPrice: Math.round((l.price / amt) * 10000) / 10000, lastPriceAt: t.date, lastStore: t.store || "" }).catch?.(() => {});
+      if (amt > 0 && l.price != null && find(l.productId)) store.updateProduct(l.productId, { lastPrice: Math.round((l.price / amt) * 10000) / 10000, lastPriceAt: t.date, lastStore: t.store || "" }).catch?.(() => {});
       const sh = shopping.find((dd) => dd.id === `p_${l.productId}` && (dd.state || "todo") !== "stored");
       if (sh) store.setShopping(sh.id, { state: "stored", checked: false, forced: false, doneAt: Date.now(), doneBy: me(), doneQty: qty(find(l.productId)) + parseQ(l.amount) });
     }
     ui.tk = null;
-    showToast(`Ticket rangé : ${plural(lines.length, "article", "articles")} · ${euro(t.total)} au budget`, lines.length ? () => undoOp(opId) : null);
-    go("#/budget");
+    showToast(`${t.source === "voice" ? "Courses rangées" : "Ticket rangé"} : ${plural(lines.length, "article", "articles")}${total > 0 ? ` · ${euro(total)} au budget` : ""}`, lines.length ? () => undoOp(opId) : null);
+    go(total > 0 ? "#/budget" : "#/placards");
   } catch (e) { showToast(e?.message || "Impossible de ranger le ticket"); }
   finally { ui.busy = false; render(); }
 }
@@ -1947,11 +2118,16 @@ app.addEventListener("click", (e) => {
       break;
     }
     case "week-make": composeWeek(); break;
+    case "addmode": ui.addMode = v; render(); break;
+    case "qa-target": ui.qa.target = v; render(); break;
+    case "mic": toggleMic(); break;
+    case "qa-go": quickAddGo(); break;
+    case "tk-new": ui.tk = { step: "text", text: "" }; break;
     case "tk-read": readTicket(); break;
-    case "tk-back": ui.tk = { step: "text", text: ui.tk?.text || "" }; render(); break;
+    case "tk-back": if (ui.tk?.source === "voice") { ui.tk = null; go("#/ajouter"); } else { ui.tk = { step: "text", text: ui.tk?.text || "" }; render(); } break;
     case "tk-inc": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.include = !l.include; render(); } break; }
-    case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; render(); } break; }
-    case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); render(); } break; }
+    case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; applyEstimate(l); render(); } break; }
+    case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); l.estimated = false; render(); } break; }
     case "tk-go": ticketGo(); break;
     case "bud-manual": ui.budgetManual = ui.budgetManual ? null : { store: "", total: "", cat: "alim", date: E.todayIso() }; render(); break;
     case "bm-cat": if (ui.budgetManual) { ui.budgetManual.cat = v; render(); } break;
@@ -2024,11 +2200,14 @@ app.addEventListener("input", (e) => {
   }
   if (t.matches("[data-cookq]")) { const c = ui.cook[Number(t.dataset.cookq)]; if (c) c.qty = parseQ(t.value); return; }
   if (t.matches("[data-recpaste]")) { ui.recPaste = t.value; return; }
+  if (t.matches("[data-qatext]")) { const had = !!ui.qa.text.trim(); ui.qa.text = t.value; if (had !== !!t.value.trim()) render(); return; }
   if (t.matches("[data-tktext]")) { const had = !!(ui.tk?.text || "").trim(); ui.tk = { ...(ui.tk || {}), step: "text", text: t.value }; if (had !== !!t.value.trim()) render(); return; }
-  if (t.matches("[data-tkp]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkp)]; if (l) { l.productId = t.value; l.amount = stockAmount(l, find(t.value)); render(); } return; }
+  if (t.matches("[data-tkp]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkp)]; if (l) { l.productId = t.value; l.amount = stockAmount(l, find(t.value)); applyEstimate(l); render(); } return; }
+  if (t.matches("[data-tkprice]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkprice)]; if (l) l.price = t.value.trim() === "" ? null : parseQ(t.value); return; }
+  if (t.matches("[data-tktotal]")) { if (ui.tk) ui.tk.total = t.value.trim() === "" ? null : parseQ(t.value); return; }
   if (t.matches("[data-tkname]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkname)]; if (l) l.newName = t.value; return; }
   if (t.matches("[data-tkq]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkq)]; if (l) l.amount = parseQ(t.value); return; }
-  if (t.matches("[data-tkd]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkd)]; if (l) { l.dateText = t.value; l.expiry = parseDateText(t.value) || ""; } return; }
+  if (t.matches("[data-tkd]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkd)]; if (l) { l.dateText = t.value; l.expiry = parseDateText(t.value) || ""; l.estimated = false; } return; }
   if (t.matches("[data-tkstore]")) { if (ui.tk) ui.tk.store = t.value; return; }
   if (t.matches("[data-tkdate]")) { if (ui.tk) ui.tk.date = t.value; return; }
   if (t.matches("[data-bm]")) { if (ui.budgetManual) ui.budgetManual[t.dataset.bm] = t.value; return; }
@@ -2059,11 +2238,13 @@ app.addEventListener("input", (e) => {
 
 app.addEventListener("change", async (e) => {
   const t = e.target;
+  if (t.matches && t.matches("[data-tkimg]") && t.files && t.files.length) { ocrTicket([...t.files].slice(0, 3)); return; }
   if (!t.matches || !t.matches("[data-tkpdf]") || !t.files || !t.files[0]) return;
   ui.busy = true; showToast("Lecture du PDF…"); render();
   try {
     const text = await pdfToText(t.files[0]);
     ui.tk = { step: "text", text };
+    if (route().name !== "ticket") go("#/ticket");
     await readTicket();
   } catch (err) { console.error(err); showToast("PDF illisible : réessayez, ou copiez-collez son texte"); }
   finally { ui.busy = false; render(); }
