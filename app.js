@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.6.1";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -908,7 +908,13 @@ function viewAjouter() {
   } else if (mode === "mic") {
     panel = `<div class="add-head">${IC.mic(30)}<span><span class="add-title">Dites vos courses</span><span class="add-sub">« Chez Lidl : deux yaourts, un kilo de pommes 2 euros 50, du poulet, total 12 euros »</span></span></div>
       <div class="seg" role="group" style="grid-auto-columns:1fr"><button data-act="qa-target" data-v="stock" aria-pressed="${qa.target === "stock"}">Ranger dans le stock</button><button data-act="qa-target" data-v="courses" aria-pressed="${qa.target === "courses"}">Ajouter aux courses</button></div>
-      <button class="mic-btn${ui.listening ? " on" : ""}" data-act="mic">${IC.mic(30)}<span>${ui.listening ? "J’écoute… touchez pour arrêter" : "Toucher pour parler"}</span></button>
+      <button class="mic-btn${ui.listening ? " on" : ""}" data-act="mic">${IC.mic(30)}<span>${ui.listening ? "J’écoute… touchez pour arrêter" : CAN_LIVE_MIC ? "Toucher pour parler" : "Dicter avec le micro du clavier"}</span></button>
+      <div id="mic-help" class="card" style="padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--soft)" ${ui.micHelp || !CAN_LIVE_MIC ? "" : "hidden"}>
+        <span class="t">${CAN_LIVE_MIC ? "La dictée directe n’a rien entendu" : "Dictée avec le clavier de l’iPhone"}</span>
+        <span class="s">1. Touchez le bouton ci-dessus : le clavier s’ouvre.<br>2. Touchez le <strong>micro 🎙 en bas à droite du clavier</strong> et parlez.<br>3. Touchez le clavier pour arrêter, puis « Vérifier et ranger ».</span>
+        <span class="s">Pas de micro sur le clavier ? Réglages › Général › Clavier › activer « Dictée ».</span>
+        ${ui.micErr ? `<span class="s">Code : ${esc(ui.micErr)}</span>` : ""}
+      </div>
       <textarea id="qa-text" class="input" data-qatext rows="3" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
       <button class="cta" data-act="qa-go" ${qa.text.trim() ? "" : "disabled"}>${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
       <span class="add-sub">Les prix sont facultatifs. Sans prix, le budget utilise les derniers prix connus. Les dates de péremption sont estimées automatiquement.</span>`;
@@ -942,31 +948,41 @@ function viewAjouter() {
 
 // ---- Dictée ----
 let recog = null;
+// Sur iPhone, l'app installée sur l'écran d'accueil n'a pas accès à la reconnaissance vocale du navigateur :
+// on passe directement par le micro du clavier (Dictée d'iOS), plus fiable.
+const IS_IOS_APP = typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent) && (navigator.standalone === true || (window.matchMedia && matchMedia("(display-mode: standalone)").matches));
+const CAN_LIVE_MIC = !!SR && !IS_IOS_APP;
+function keyboardDictation() {
+  // Doit rester synchrone dans le geste de l'utilisateur pour que l'iPhone ouvre le clavier.
+  const el = document.getElementById("qa-text");
+  if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch {} }
+  ui.micHelp = true;
+  const help = document.getElementById("mic-help"); if (help) help.hidden = false;
+}
 function toggleMic() {
   if (ui.listening && recog) { try { recog.stop(); } catch {} return; }
-  if (!SR) { micFallback("Dictée directe indisponible ici : touchez la zone puis le micro du clavier"); return; }
+  if (!CAN_LIVE_MIC) { keyboardDictation(); return; }
   const base = (ui.qa.text || "").trim();
+  let heard = false;
   try {
     recog = new SR();
-    recog.lang = "fr-FR"; recog.interimResults = true; recog.continuous = true;
+    recog.lang = "fr-FR"; recog.interimResults = true; recog.continuous = false; recog.maxAlternatives = 1;
     let finalTxt = "";
     recog.onresult = (ev) => {
+      heard = true;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const r = ev.results[i];
         if (r.isFinal) finalTxt += (finalTxt ? ", " : "") + r[0].transcript.trim(); else interim += r[0].transcript;
       }
-      ui.qa.text = [base, finalTxt, interim.trim()].filter(Boolean).join(base || finalTxt ? ", " : "");
+      ui.qa.text = [base, finalTxt, interim.trim()].filter(Boolean).join(", ");
       const el = document.getElementById("qa-text"); if (el) el.value = ui.qa.text;
     };
-    recog.onerror = (ev) => { ui.listening = false; if (["not-allowed", "service-not-allowed", "audio-capture"].includes(ev.error)) micFallback("Micro non autorisé : utilisez le micro du clavier, ou autorisez le micro dans Réglages › Safari"); else render(); };
-    recog.onend = () => { ui.listening = false; render(); };
+    recog.onerror = (ev) => { ui.listening = false; ui.micHelp = true; ui.micErr = ev.error; render(); };
+    recog.onend = () => { ui.listening = false; if (!heard) ui.micHelp = true; render(); };
     recog.start(); ui.listening = true; render();
-  } catch { micFallback("Dictée directe indisponible : touchez la zone puis le micro du clavier"); }
-}
-function micFallback(msg) {
-  ui.listening = false; showToast(msg); render();
-  setTimeout(() => document.getElementById("qa-text")?.focus(), 60);
+    setTimeout(() => { if (ui.listening && !heard) { try { recog.stop(); } catch {} } }, 7000);
+  } catch { ui.micHelp = true; render(); }
 }
 async function quickAddGo() {
   const r = parsePhrase(ui.qa.text);
@@ -2121,7 +2137,7 @@ app.addEventListener("click", (e) => {
     case "week-make": composeWeek(); break;
     case "addmode": ui.addMode = v; render(); break;
     case "qa-target": ui.qa.target = v; render(); break;
-    case "mic": toggleMic(); break;
+    case "mic": if (ui.micHelp && !ui.listening) { keyboardDictation(); } else toggleMic(); break;
     case "qa-go": quickAddGo(); break;
     case "tk-new": ui.tk = { step: "text", text: "" }; break;
     case "tk-read": readTicket(); break;
