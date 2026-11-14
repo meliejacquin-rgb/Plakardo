@@ -349,6 +349,7 @@ Tacos aux haricots noirs | Plat | Mexicain | 15 | 10 | Facile
 
 Omelette espagnole aux pommes de terre | Plat | Espagnol | 15 | 25 | Facile
 @id b-omelette-espagnole-aux-pommes-de-terre
+@img img/recettes/b-omelette-espagnole-aux-pommes-de-terre.webp
 - œuf: 5 pièce
 - pomme de terre: 350 g
 - oignon: 1 pièce
@@ -362,6 +363,7 @@ Omelette espagnole aux pommes de terre | Plat | Espagnol | 15 | 25 | Facile
 
 Poulet yassa simplifié | Plat | Africain | 15 | 25 | Facile
 @id b-poulet-yassa-simplifie
+@img img/recettes/b-poulet-yassa-simplifie.webp
 - poulet: 300 g
 - oignon: 3 pièce
 - citron: 2 pièce
@@ -377,6 +379,7 @@ Poulet yassa simplifié | Plat | Africain | 15 | 25 | Facile
 
 Boulgour aux aubergines et pois chiches | Plat | Méditerranéen | 10 | 25 | Facile
 @id b-boulgour-aux-aubergines-et-pois-chiches
+@img img/recettes/b-boulgour-aux-aubergines-et-pois-chiches.webp
 - boulgour: 140 g
 - aubergine: 1 pièce
 - pois chiches: 200 g
@@ -408,6 +411,7 @@ Poêlée de gnocchis aux champignons | Plat | Italien | 10 | 15 | Facile
 
 Bœuf haché façon kefta et semoule | Plat | Maghrébin | 15 | 15 | Facile
 @id b-boeuf-hache-facon-kefta-et-semoule
+@img img/recettes/b-boeuf-hache-facon-kefta-et-semoule.webp
 - bœuf haché: 300 g
 - semoule: 140 g
 - concombre: 150 g
@@ -424,6 +428,7 @@ Bœuf haché façon kefta et semoule | Plat | Maghrébin | 15 | 15 | Facile
 
 Curry thaï de crevettes | Plat | Thaïlandais | 15 | 15 | Facile
 @id b-curry-thai-de-crevettes
+@img img/recettes/b-curry-thai-de-crevettes.webp
 - crevettes décortiquées: 300 g
 - lait de coco: 200 ml
 - pâte de curry rouge: 25 g
@@ -440,6 +445,7 @@ Curry thaï de crevettes | Plat | Thaïlandais | 15 | 15 | Facile
 
 Gratin de poireaux au saumon | Plat | Français | 15 | 25 | Facile
 @id b-gratin-de-poireaux-au-saumon
+@img img/recettes/b-gratin-de-poireaux-au-saumon.webp
 - poireau: 2 pièce
 - saumon: 250 g
 - pomme de terre: 250 g
@@ -454,6 +460,7 @@ Gratin de poireaux au saumon | Plat | Français | 15 | 25 | Facile
 
 Salade tiède de lentilles et œufs | Plat | Healthy | 10 | 15 | Facile
 @id b-salade-tiede-de-lentilles-et-oeufs
+@img img/recettes/b-salade-tiede-de-lentilles-et-oeufs.webp
 - lentilles cuites: 300 g
 - œuf: 2 pièce
 - carotte: 1 pièce
@@ -470,6 +477,7 @@ Salade tiède de lentilles et œufs | Plat | Healthy | 10 | 15 | Facile
 
 Pâtes au thon et tomates | Plat | Italien | 10 | 15 | Facile
 @id b-pates-au-thon-et-tomates
+@img img/recettes/b-pates-au-thon-et-tomates.webp
 - pâtes: 200 g
 - thon au naturel: 160 g
 - tomates concassées: 300 g
@@ -485,6 +493,7 @@ Pâtes au thon et tomates | Plat | Italien | 10 | 15 | Facile
 
 Colombo de poulet express | Plat | Créole | 15 | 25 | Facile
 @id b-colombo-de-poulet-express
+@img img/recettes/b-colombo-de-poulet-express.webp
 - poulet: 300 g
 - pomme de terre: 250 g
 - carotte: 1 pièce
@@ -501,6 +510,7 @@ Colombo de poulet express | Plat | Créole | 15 | 25 | Facile
 
 Fajitas de bœuf aux poivrons | Plat | Mexicain | 15 | 15 | Facile
 @id b-fajitas-de-boeuf-aux-poivrons
+@img img/recettes/b-fajitas-de-boeuf-aux-poivrons.webp
 - bœuf: 280 g
 - tortilla de blé: 4 pièce
 - poivron: 2 pièce
