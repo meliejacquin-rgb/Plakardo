@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.8.0";
+const APP_VERSION = "2.9.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1279,7 +1279,9 @@ function viewRecettes() {
     body = `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
       <span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:18px">Menu de la semaine</span>
       <span class="s">Plakardo choisit parmi ${BOOK.filter((r) => r.type === "Plat").length} plats ceux qui utilisent votre stock, en commençant par ce qui périme bientôt, puis remplit la liste de courses.</span>
+      <button class="chip" data-act="rf-favonly" aria-pressed="${!!f.favOnly}" style="align-self:flex-start">${f.favOnly ? "★ Seulement parmi mes favoris" : "☆ Seulement parmi mes favoris"}</button>
       <button class="cta" data-act="week-make" ${ui.busy ? "disabled" : ""}>${menu.length ? "Recomposer ma semaine" : "Composer ma semaine"}</button>
+      <a class="out-btn" href="#/menu-ajout" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Choisir mes recettes moi-même</a>
       ${menu.length ? `<a class="out-btn" href="#/menu" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Voir le menu en cours (${menu.length})</a>` : ""}
     </section>`;
   } else if (mode === "stock") {
@@ -1462,6 +1464,37 @@ function allInShopping(lines) {
   const todo = shopping.filter((d) => (d.state || (d.checked ? "bought" : "todo")) !== "stored" && d.state !== "cancelled");
   return lines.every((L) => L.product ? todo.some((d) => d.id === `p_${L.product.id}`) : todo.some((d) => !d.productId && (d.label || "").toLowerCase() === L.name.toLowerCase()));
 }
+const sortByDay = (entries) => { const order = E.weekDays(7); return [...entries].sort((x, y) => ((order.indexOf(x.day) + 9) % 9) - ((order.indexOf(y.day) + 9) % 9)); };
+function nextFreeDay() {
+  const used = new Set((meta.menu?.entries || []).map((e) => e.day));
+  return E.weekDays(7).find((d) => !used.has(d)) || "";
+}
+function addToMenu(r, day) {
+  const list = [...(meta.menu?.entries || []), { recipeId: r.id, portions: ui.recFilters.portions || r.portions || 2, day: day ?? nextFreeDay() }];
+  return setMenu(list);
+}
+// Choisir soi-même : favoris ou livre, avec le jour.
+function viewMenuAjout() {
+  const tab = ui.mpTab || (recipes.some(isFav) ? "fav" : "book");
+  const day = ui.mpDay ?? nextFreeDay();
+  const q = E.normTxt(ui.mpSearch || "");
+  const inMenu = new Set((meta.menu?.entries || []).map((e) => e.recipeId));
+  let list = tab === "fav" ? recipes.filter(isFav) : BOOK.filter((r) => r.type === "Plat" || ui.mpAll);
+  if (q) list = list.filter((r) => E.normTxt(r.title + " " + r.ingredients.map((g) => g.name).join(" ")).includes(q));
+  const shown = list.slice(0, ui.mpMore || 40);
+  return `<main class="screen no-nav">${offlineBanner()}
+    <div class="top"><a class="icon-btn" href="#/menu" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:24px">Choisir une recette</h1><span class="sub">Ajoutée au menu pour le jour choisi</span></div></div>
+    <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Jour</span>
+      <div class="chips">${E.weekDays(7).map((d) => `<button class="chip sm" data-act="mp-day" data-v="${d}" aria-pressed="${day === d}">${d}</button>`).join("")}<button class="chip sm" data-act="mp-day" data-v="" aria-pressed="${day === ""}">Sans jour</button></div></section>
+    <div class="seg" role="group"><button data-act="mp-tab" data-v="fav" aria-pressed="${tab === "fav"}">Mes favoris (${recipes.filter(isFav).length})</button><button data-act="mp-tab" data-v="book" aria-pressed="${tab === "book"}">Le livre</button></div>
+    <label class="search">${I.search(18)}<input id="mp-search" type="search" data-mpsearch placeholder="Rechercher : poulet, gratin…" value="${esc(ui.mpSearch || "")}" autocomplete="off" aria-label="Rechercher"></label>
+    ${tab === "fav" && !list.length && !q ? `<p class="empty-state">Pas encore de favoris. Sur une recette, touchez l’étoile ☆ pour la retrouver ici.</p>` : ""}
+    <div id="mp-list" class="card list">${shown.map((r0) => { const r = R(r0); const sc = E.scoreRecipe(r, products); return `<div class="list-row">${vignette(r, 40)}
+      <a class="grow" href="#/recette/${encodeURIComponent(r.id)}" style="text-decoration:none;color:inherit;min-width:0"><span class="t">${esc(r.title)}</span><span class="s" style="display:block">${esc([r.theme, (r.prepMin || 0) + (r.cookMin || 0) ? `${(r.prepMin || 0) + (r.cookMin || 0)} min` : ""].filter(Boolean).join(" · "))} · ${sc.missing ? `manque ${sc.missing}` : "tout en stock"}</span></a>
+      <button class="out-btn" style="height:36px;padding:0 12px" data-act="mp-add" data-v="${esc(r.id)}">${inMenu.has(r.id) ? "＋ encore" : "Ajouter"}</button></div>`; }).join("")}</div>
+    ${list.length > shown.length ? `<button class="out-btn" data-act="mp-more">Afficher plus</button>` : ""}
+  </main>`;
+}
 function viewMenu() {
   const entries = menuEntries();
   const needs = E.computeNeeds(entries.map((e) => ({ recipe: e.recipe, portions: e.portions })), products);
@@ -1473,11 +1506,14 @@ function viewMenu() {
       <strong style="color:var(--warn)">${L.missing ? `${fmtQ(L.missing)} ${esc(L.unit)}` : ""}</strong>${L.suggestion ? `<span class="s"> · ${plural(L.suggestion.packs, "paquet", "paquets")}</span>` : ""}</div>`;
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Menu de la semaine</h1><span class="sub">Besoins calculés sans compter deux fois le même stock</span></div></div>
-    ${entries.length ? `<div class="card list">${entries.map((e, i) => `<div class="list-row">${vignette(e.recipe, 40)}
-      <a class="grow" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit">${e.day ? `<span class="eyebrow">${esc(e.day)}${e.meal ? " · " + esc(e.meal) : ""}</span>` : ""}<span class="t">${esc(e.recipe.title)}</span><span class="s">${plural(e.portions, "portion", "portions")}</span></a>
+    <a class="cta" href="#/menu-ajout" style="height:50px;font-size:16px">${I.plus(18)} Choisir une recette moi-même</a>
+    ${entries.length ? `<div class="card list">${sortByDay(entries).map((e) => `<div class="list-row">${vignette(e.recipe, 40)}
+      <span class="grow" style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <select class="day-sel" data-menuday="${e.i}" aria-label="Jour">${["", ...E.DAYS].map((dname) => `<option value="${dname}" ${dname === (e.day || "") ? "selected" : ""}>${dname || "Sans jour"}</option>`).join("")}</select>
+        <a href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${esc(e.recipe.title)}</span><span class="s" style="display:block">${plural(e.portions, "portion", "portions")}${e.meal ? " · " + esc(e.meal) : ""}</span></a></span>
       <button class="sc-x" data-act="menu-swap" data-i="${e.i}" aria-label="Changer cette recette" title="Changer">↻</button>
       <button class="sc-x" data-act="menu-del" data-i="${e.i}" aria-label="Retirer du menu">×</button></div>`).join("")}</div>`
-      : `<p class="empty-state">Menu vide. Depuis une recette, touchez « Ajouter au menu ».</p>`}
+      : `<p class="empty-state">Menu vide. Choisissez vos recettes ci-dessus, ou laissez Plakardo composer la semaine (onglet Recettes).</p>`}
     ${entries.length ? `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">À acheter (${buy.length})</h2>
       ${buy.length ? `<div class="card list">${buy.map(needRow).join("")}</div>` : `<p class="s">Tout est en stock${okN ? ` (${plural(okN, "ingrédient", "ingrédients")})` : ""}.</p>`}
       ${other.length ? `<h2 class="eyebrow">À vérifier (${other.length})</h2><div class="card list">${other.map(needRow).join("")}</div>` : ""}
@@ -1680,7 +1716,17 @@ async function composeWeek({ replaceIndex = null } = {}) {
       showToast(`${cur.day ? cur.day + " : " : ""}${pick.recipe.title}`);
       return;
     }
-    const plan = E.planWeek(BOOK, products, { days: f.days || 5, perDay, filters: { ...f }, prefs: prefs(), seed: Date.now() });
+    const favs = recipes.filter(isFav).map((r) => (r.builtin ? (BOOK_BY_ID.get(r.id) || r) : r)).filter((r) => r.ingredients && r.ingredients.length);
+    const source = f.favOnly && favs.length ? favs.map((r) => ({ ...r, type: r.type || "Plat" })) : BOOK;
+    const plan = E.planWeek(source, products, { days: f.days || 5, perDay, filters: { ...f, ...(f.favOnly ? { dishType: "" } : {}) }, prefs: prefs(), seed: Date.now() });
+    const want = Math.min(14, (f.days || 5) * perDay);
+    if (f.favOnly && plan.length < want) {
+      // Pas assez de favoris : on complète avec le livre
+      const more = E.planWeek(BOOK, products, { days: f.days || 5, perDay, filters: { ...f }, prefs: prefs(), avoid: plan.map((x) => x.recipe.id), seed: Date.now() + 1 });
+      const days = E.weekDays(f.days || 5);
+      plan.push(...more.slice(0, want - plan.length));
+      plan.forEach((x, i) => { x.day = days[Math.floor(i / perDay)] || ""; x.meal = perDay === 2 ? (i % 2 ? "Dîner" : "Déjeuner") : ""; });
+    }
     if (!plan.length) { showToast("Aucune recette ne correspond aux filtres"); return; }
     const entries = plan.map((x) => ({ recipeId: x.recipe.id, portions: f.portions || 2, day: x.day, meal: x.meal }));
     await setMenu(entries);
@@ -2056,6 +2102,7 @@ function render() {
       case "recettes": html = viewRecettes(); break;
       case "recette": html = viewRecette(r.arg); break;
       case "menu": html = viewMenu(); break;
+      case "menu-ajout": html = viewMenuAjout(); break;
       case "import": html = viewImport(r); break;
       case "ticket": html = viewTicket(); break;
       case "budget": html = viewBudget(); break;
@@ -2176,6 +2223,7 @@ app.addEventListener("click", (e) => {
     case "recmode": ui.recMode = v; render(); break;
     case "rf": ui.recFilters[field] = (field === "maxTime" || field === "days") && v ? Number(v) : v; render(); break;
     case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
+    case "rf-favonly": ui.recFilters.favOnly = !ui.recFilters.favOnly; if (ui.recFilters.favOnly && !recipes.some(isFav)) showToast("Aucun favori pour l’instant : touchez ☆ sur une recette"); render(); break;
     case "rf-gaspi": ui.recFilters.antigaspi = ui.recFilters.antigaspi === false; render(); break;
     case "rec-ask": case "rec-ask-chat": {
       const text = E.buildPrompt({ products, locations: locations(), filters: ui.recFilters, prefs: prefs(), mode: ui.recMode });
@@ -2218,10 +2266,19 @@ app.addEventListener("click", (e) => {
     }
     case "rec-menu": {
       const r = findRecipe(v); if (!r) break;
-      ensureSaved(r).then((nid) => { setMenu([...(meta.menu?.entries || []), { recipeId: nid, portions: ui.recPortions[r.id] || r.portions }]); showToast("Ajoutée au menu"); render(); });
+      ensureSaved(r).then((nid) => { const day = nextFreeDay(); setMenu([...(meta.menu?.entries || []), { recipeId: nid, portions: ui.recPortions[r.id] || r.portions, day }]); showToast(`Ajoutée au menu${day ? ` pour ${day.toLowerCase()}` : ""}`); render(); });
       break;
     }
     case "week-make": composeWeek(); break;
+    case "mp-day": ui.mpDay = v; render(); break;
+    case "mp-tab": ui.mpTab = v; ui.mpMore = 40; render(); break;
+    case "mp-more": ui.mpMore = (ui.mpMore || 40) + 40; render(); break;
+    case "mp-add": {
+      const r = findRecipe(v); if (!r || !canWrite()) break;
+      const day = ui.mpDay ?? nextFreeDay();
+      addToMenu(r, day).then(() => { showToast(`${r.title} ajouté${day ? ` pour ${day.toLowerCase()}` : " au menu"}`); ui.mpDay = undefined; render(); });
+      break;
+    }
     case "addmode": ui.addMode = v; render(); break;
     case "qa-target": ui.qa.target = v; render(); break;
     case "mic": if (ui.micHelp && !ui.listening) { keyboardDictation(); } else toggleMic(); break;
@@ -2329,6 +2386,8 @@ app.addEventListener("input", (e) => {
   if (t.matches("[data-tkstore]")) { if (ui.tk) ui.tk.store = t.value; return; }
   if (t.matches("[data-tkdate]")) { if (ui.tk) ui.tk.date = t.value; return; }
   if (t.matches("[data-bm]")) { if (ui.budgetManual) ui.budgetManual[t.dataset.bm] = t.value; return; }
+  if (t.matches("[data-menuday]")) { const list = [...(meta.menu?.entries || [])]; const e2 = list[Number(t.dataset.menuday)]; if (e2) { e2.day = t.value; setMenu(list); } return; }
+  if (t.matches("[data-mpsearch]")) { ui.mpSearch = t.value; ui.mpMore = 40; const caret = t.selectionStart; render(); const el = document.getElementById("mp-search"); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch {} } return; }
   if (t.matches("[data-booksearch]")) { ui.bookSearch = t.value; ui.bookMore = 30; const caret = t.selectionStart; render(); const el = document.getElementById("book-search"); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch {} } return; }
   if (t.matches("[data-rf]")) { const k = t.dataset.rf; ui.recFilters[k] = k === "mustUse" || k === "exclude" ? splitList(t.value) : t.value; if (t.tagName === "SELECT") render(); return; }
   if (t.matches("[data-storeq]")) { const s = ui.storeSel?.[Number(t.dataset.storeq)]; if (s) s.qty = parseQ(t.value); return; }
