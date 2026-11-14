@@ -5,7 +5,7 @@ const NUM_WORDS = { un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6
 const UNIT_WORDS = [
   [/^(kilos?|kilogrammes?|kg)$/, "kg"], [/^(grammes?|gr?|g)$/, "g"], [/^(litres?|l)$/, "l"], [/^(centilitres?|cl)$/, "cl"], [/^(millilitres?|ml)$/, "ml"],
   [/^(bo[iî]tes?|conserves?)$/, "boîte"], [/^(paquets?|sachets?)$/, "sachet"], [/^(bouteilles?|flacons?)$/, "flacon"], [/^(tubes?)$/, "tube"],
-  [/^(sacs?)$/, "sac"], [/^(pots?|barquettes?|briques?|packs?|tranches?|pi[eè]ces?|morceaux?)$/, "pièce"],
+  [/^(sacs?)$/, "sac"], [/^(rouleaux?|lots?|bouquets?|t[eê]tes?|filets?)$/, "pièce"], [/^(pots?|barquettes?|briques?|packs?|tranches?|pi[eè]ces?|morceaux?)$/, "pièce"],
 ];
 const norm = (s) => String(s || "").toLowerCase().replace(/œ/g, "oe").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -24,12 +24,18 @@ function extractPrice(s) {
   if (!m) return { price: null, rest: s };
   const a = toNumber(m[1]);
   const cents = m[2] ? Number(m[2].padEnd(2, "0")) / 100 : 0;
-  return { price: a == null ? null : Math.round((a + cents) * 100) / 100, rest: (s.slice(0, m.index) + " " + s.slice(m.index + m[0].length)).replace(/\b(a|à|pour)\s*$/i, "").trim() };
+  return { price: a == null ? null : Math.round((a + cents) * 100) / 100, rest: (s.slice(0, m.index) + " " + s.slice(m.index + m[0].length)).replace(/(?:^|\s)(a|à|pour|au prix de)\s*$/i, "").trim() };
 }
 
 // Retourne { store, total, items: [{ name, qty, unit, price }] }
 export function parsePhrase(text) {
-  let src = String(text || "").replace(/\n+/g, ", ");
+  // Langage parlé : « J'ai acheté… ainsi que… J'ai également pris… » → liste d'articles.
+  let src = String(text || "").replace(/\n+/g, ", ")
+    .replace(/^\s*(che|chaise|cher)\s+/i, "chez ")
+    .replace(/[.!?;]+(\s|$)/g, ", ")
+    .replace(/\b(j['’ ]?ai|on a|nous avons|je viens d['’ ]?|il y a|j['’ ]?ai aussi|j['’ ]?ai également)\s*(également|aussi|encore|aujourd['’ ]?hui)?\s*(achet[ée]e?s?|pris|rapport[ée]s?|acheter|prendre)?(?=[\s,]|$)/gi, ", ")
+    .replace(/\b(ainsi que|et puis|en plus|de plus|et aussi|aussi|également|ensuite|il y avait|ajoute[rz]?|achète|achetez|rajoute)(?=[\s,]|$)/gi, ", ")
+    .replace(/,(\s*,)+/g, ",");
   let store = "";
   const sm = src.match(/\b(?:chez|a la|à la|au|aux|bei)\s+([A-Za-zÀ-ÿ'][\wÀ-ÿ' .-]{1,24}?)\s*(?::|,|$)/i);
   if (sm && !/^\d/.test(sm[1])) { store = cap(sm[1].trim()); src = src.replace(sm[0], ", "); }
@@ -64,7 +70,7 @@ export function parsePhrase(text) {
     const ART = /^(?:(?:de la|du|des|de|les|la|le)\s+|(?:de l|d|l)['’]\s*)/i;
     let name = words.join(" ").replace(ART, "").replace(ART, "").trim();
     name = name.replace(/\s+(s'il te pla[iî]t|stp)$/i, "").trim();
-    if (!name || /^(merci|voila|voilà|c est tout|c'est tout)$/i.test(name)) { if (price != null && items.length && items[items.length - 1].price == null) items[items.length - 1].price = price; continue; }
+    if (!name || /^(merci|voila|voilà|c est tout|c'est tout|chez|che|et)$/i.test(name)) { if (price != null && items.length && items[items.length - 1].price == null) items[items.length - 1].price = price; continue; }
     if (unit === "kg" && qty < 30) { /* gardé en kg */ }
     items.push({ name: cap(name), qty, unit, price, explicit });
   }
