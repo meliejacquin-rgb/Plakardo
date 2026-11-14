@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.16.0";
+const APP_VERSION = "2.16.1";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -1588,8 +1588,18 @@ function cookFromRecipe(r) {
     const p = g.productId && byId[g.productId];
     if (!p || !E.isAvailable(p)) continue;
     if (E.isStatusMode(p)) { ui.cook.push({ productId: p.id, status: E.statusOf(p), used: true }); continue; }
-    const q = g.qty == null ? null : E.convert(g.qty, g.unit, p.unit || "pièce");
+    let q = g.qty == null ? null : E.convert(g.qty, g.unit, p.unit || "pièce");
     ui.cook.push({ productId: p.id, qty: q == null ? 0 : Math.min(E.round3(q), qty(p)) });
+    // Pas assez dans le produit principal : le reste est pris dans les équivalents (ex. Eier après Œufs).
+    if (q != null) {
+      let left = q - qty(p);
+      for (const id of g.altIds || []) {
+        const a = byId[id]; if (left <= 1e-9 || !a || !E.isAvailable(a)) continue;
+        const f = E.convert(1, a.unit || "pièce", p.unit || "pièce"); if (!f) continue;
+        const t = Math.min(left, qty(a) * f);
+        if (t > 0) { ui.cook.push({ productId: a.id, qty: E.round3(t / f) }); left -= t; }
+      }
+    }
   }
   ui.cookLabel = r.title;
   go("#/cuisine");

@@ -424,6 +424,16 @@ export function scaleRecipe(recipe, portions) {
 }
 
 // État d'un ingrédient face au stock (REC-05, EXP-03, INV-04/05).
+// Quantité disponible d'un ingrédient, produits équivalents compris, exprimée dans l'unité du produit principal.
+function availAll(p, altIds, byId, now) {
+  let a = lotsOf(p).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0);
+  for (const id of altIds || []) {
+    const q = byId[id]; if (!q) continue;
+    const v = convert(lotsOf(q).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0), q.unit || "pièce", p.unit || "pièce");
+    if (v != null) a += v;
+  }
+  return round3(a);
+}
 export function ingredientState(g, byId, now = new Date()) {
   const p = g.productId ? byId[g.productId] : null;
   if (!p && g.base) return { state: "base", product: null, label: "Placard de base" };
@@ -433,8 +443,7 @@ export function ingredientState(g, byId, now = new Date()) {
     if (st === "epuise") return { state: "missing", product: p, label: "Épuisé" };
     return { state: "check", product: p, label: "Quantité à vérifier" };
   }
-  const usable = lotsOf(p).filter((l) => !lotExpired(l, now));
-  const avail = round3(usable.reduce((n, l) => n + num(l.qty), 0));
+  const avail = availAll(p, g.altIds, byId, now);
   if (g.qty == null) return { state: avail > 0 ? "check" : "missing", product: p, label: avail > 0 ? "Quantité à vérifier" : "Manquant", avail };
   const need = convert(g.qty, g.unit, p.unit || "pièce");
   if (need == null) return { state: "check", product: p, label: `Unités différentes (${p.unit}) : à vérifier`, avail };
@@ -482,7 +491,8 @@ export function computeNeeds(entries, products, now = new Date()) {
       if (!p && g.base) continue;
       const key = p ? `p:${p.id}` : `n:${g.name.toLowerCase()}|${unitInfo(g.unit).dim}`;
       let L = lines.get(key);
-      if (!L) { L = { key, product: p, name: p ? p.name : g.name, unit: p ? (p.unit || "pièce") : g.unit, need: 0, unknown: false, sources: [] }; lines.set(key, L); }
+      if (!L) { L = { key, product: p, name: p ? p.name : g.name, unit: p ? (p.unit || "pièce") : g.unit, need: 0, unknown: false, sources: [], alts: new Set() }; lines.set(key, L); }
+      for (const id of g.altIds || []) L.alts.add(id);
       L.sources.push(e.recipe.title);
       if (g.qty == null) { L.unknown = true; continue; }
       const q = p ? convert(g.qty, g.unit, L.unit) : convert(g.qty, g.unit, L.unit);
@@ -498,7 +508,7 @@ export function computeNeeds(entries, products, now = new Date()) {
       L.mode = st === "epuise" ? "buy" : st === "bientot" ? "suggest" : "check";
       L.missing = null;
     } else if (L.product) {
-      L.avail = round3(lotsOf(L.product).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0));
+      L.avail = availAll(L.product, [...L.alts], byId, now);
       L.missing = round3(Math.max(0, L.need - L.avail));
       L.mode = L.unknown && !L.need ? "check" : L.missing > 0 ? "buy" : "ok";
     } else {
@@ -615,9 +625,25 @@ function rxFor(tok) {
   return rxCache.get(tok);
 }
 // Trouve le produit du stock qui correspond à un ingrédient (en stock d'abord).
+// Tous les produits du stock qui correspondent (ex. « Œufs » et « Eier »), le meilleur en premier.
+export function matchAll(name, products) {
+  const key = normTxt(name);
+  const toks = SYN[key] || SYN[key.replace(/s$/, "")] || [key, key.replace(/s$/, "")];
+  const excl = EXCL[key] || [];
+  const out = [];
+  for (const p of products) {
+    if (p.categoryId && p.categoryId !== "alim") continue;
+    const n = normTxt(`${p.name} ${p.detail || ""}`);
+    if (excl.some((x) => n.includes(x))) continue;
+    let hit = 0;
+    for (const t of toks) if (rxFor(t).test(n)) hit = Math.max(hit, t.length);
+    if (hit) out.push({ p, s: hit * 10 + (isAvailable(p) ? 1000 : 0) });
+  }
+  return out.sort((a, b) => b.s - a.s).map((x) => x.p);
+}
 export function matchProduct(name, products) {
   const key = normTxt(name);
-  const toks = SYN[key] || [key, key.replace(/s$/, "")];
+  const toks = SYN[key] || SYN[key.replace(/s$/, "")] || [key, key.replace(/s$/, "")];
   const excl = EXCL[key] || [];
   let best = null, bestScore = -1;
   for (const p of products) {
@@ -646,7 +672,9 @@ export function resolveRecipe(r, products) {
     let p = matchProduct(g.name, products);
     const fb = FALLBACK[normTxt(g.name)];
     if (fb && (!p || !isAvailable(p))) { const q = matchProduct(fb, products); if (q && (!p || isAvailable(q))) p = q; }
-    return { ...g, productId: p ? p.id : null };
+    // Produits équivalents (même aliment, autre marque ou autre langue) : leurs quantités s'additionnent.
+    const altIds = p ? matchAll(g.name, products).filter((q) => q.id !== p.id && !isStatusMode(q) && convert(1, q.unit || "pièce", p.unit || "pièce") != null).map((q) => q.id) : [];
+    return { ...g, productId: p ? p.id : null, ...(altIds.length ? { altIds } : {}) };
   }) };
 }
 
@@ -672,10 +700,13 @@ function evalWithAvail(r, avail, byId, prioMap, portions) {
     if (!p) { if (!g.base) { missing += 1; score -= 4; } continue; }
     if (isStatusMode(p)) { score += statusOf(p) === "epuise" ? -3 : 1.5; if (statusOf(p) === "epuise") missing += 1; continue; }
     const need = g.qty == null ? null : convert(g.qty, g.unit, p.unit || "pièce");
-    const have = avail[p.id] || 0;
+    // Produit principal + équivalents (ex. Œufs + Eier), convertis dans l'unité du principal.
+    const pool = [p, ...(g.altIds || []).map((id) => byId[id]).filter(Boolean)].map((q) => ({ q, f: convert(1, q.unit || "pièce", p.unit || "pièce") || 0 }));
+    const have = round3(pool.reduce((s, x) => s + (avail[x.q.id] || 0) * x.f, 0));
+    const take = (amount) => { let left = amount; for (const x of pool) { if (left <= 1e-9) break; const a = (avail[x.q.id] || 0) * x.f; const t = Math.min(a, left); if (t > 0 && x.f) { uses.push({ id: x.q.id, q: round3(t / x.f) }); left -= t; } } };
     if (need == null) { if (have > 0) { score += 1.5; uses.push({ id: p.id, q: 0 }); } else { missing += 1; score -= 3; } }
-    else if (have + 1e-9 >= need) { score += 3; okN += 1; uses.push({ id: p.id, q: need }); }
-    else if (have > 0) { score += 1; missing += 1; uses.push({ id: p.id, q: have }); }
+    else if (have + 1e-9 >= need) { score += 3; okN += 1; take(need); }
+    else if (have > 0) { score += 1; missing += 1; take(have); }
     else { missing += 1; score -= 3; }
     const pr = prioMap.get(p.id);
     if (pr && have > 0) score += 8 / (1 + Math.max(0, pr.days));
