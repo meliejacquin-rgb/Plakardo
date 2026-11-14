@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.13.1";
+const APP_VERSION = "2.14.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -1387,43 +1387,58 @@ function filteredBook(q = "") {
 }
 function viewRecettes() {
   const f = ui.recFilters;
-  const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
-  const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
-  const mode = ["week", "stock", "book"].includes(ui.recMode) ? ui.recMode : "week";
-  const filters = recipeFilterBar(mode);
-  let body = "";
-  if (mode === "week") {
-    const menu = menuEntries();
-    body = `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
-      <span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:18px">Menu de la semaine</span>
-      <span class="s">Plakardo choisit parmi ${BOOK.filter((r) => r.type === "Plat").length} plats ceux qui utilisent votre stock, en commençant par ce qui périme bientôt, puis remplit la liste de courses.</span>
-      <button class="chip" data-act="rf-favonly" aria-pressed="${!!f.favOnly}" style="align-self:flex-start">${f.favOnly ? "★ Seulement parmi mes favoris" : "☆ Seulement parmi mes favoris"}</button>
-      <button class="cta" data-act="week-make" ${ui.busy ? "disabled" : ""}>${menu.length ? "Recomposer ma semaine" : "Composer ma semaine"}</button>
-      <a class="out-btn" href="#/menu-ajout" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Choisir mes recettes moi-même</a>
-      ${menu.length ? `<a class="out-btn" href="#/menu" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Voir le menu en cours (${menu.length})</a>` : ""}
-    </section>`;
-  } else if (mode === "stock") {
-    const list = E.suggestRecipes(BOOK, products, { filters: { ...f, dishType: f.dishType }, prefs: prefs(), limit: 15 });
-    body = `<section style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">Le mieux adapté à votre stock</h2>
-      ${list.length ? list.map((x) => recipeCard(x.recipe)).join("") : `<p class="empty-state">Aucune recette ne correspond aux filtres.</p>`}</section>`;
+  const q = ui.bookSearch || "";
+  const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 4);
+  // Évaluation de tout le livre une seule fois (score + manquants), classée selon le stock.
+  const scored = E.suggestRecipes(filteredBook(q), products, { filters: { portions: f.portions }, prefs: {}, limit: 999 });
+  const info = new Map(scored.map((x) => [x.recipe.id, x]));
+  const card = (r, w = 148) => {
+    const x = info.get(r.id) || { missing: 0 };
+    const fav = recipes.some((y) => y.id === r.id && isFav(y));
+    const st = x.missing === 0 ? `<span class="rc-ok">✓ En stock</span>` : `<span class="rc-miss">Manque ${x.missing}</span>`;
+    return `<a class="rc" href="#/recette/${encodeURIComponent(r.id)}" style="width:${w}px">
+      <span class="rc-img">${r.image ? `<img src="${esc(r.image)}" alt="" loading="lazy" decoding="async">` : vignette(r, 148)}${fav ? `<span class="rc-fav">★</span>` : ""}</span>
+      <span class="rc-t">${esc(r.title)}</span>
+      <span class="rc-s">${recTime(r)} min · ${st}</span></a>`;
+  };
+  const rail = (title, list, act = "", sub = "") => list.length ? `<section class="rail">
+      <div class="row-between"><h2 class="rail-h">${title}${sub ? ` <span class="s">${sub}</span>` : ""}</h2>${act}</div>
+      <div class="rail-row">${list.map((x) => card(x)).join("")}</div></section>` : "";
+  const active = ["theme", "prepMax", "cookMax", "difficulty"].filter((k) => f[k]).length + ((f.exclude || []).length ? 1 : 0);
+  const menu = menuEntries();
+  // Barre compacte : recherche + bouton filtres.
+  const top = `<div style="display:flex;gap:8px;align-items:center">
+      <label class="search" style="flex:1;margin:0">${I.search(18)}<input id="book-search" type="search" data-booksearch placeholder="Poulet, curry, gratin…" value="${esc(q)}" autocomplete="off" aria-label="Rechercher une recette"></label>
+      <button class="icon-btn filt-btn" data-act="rf-toggle" aria-pressed="${!!ui.recFiltOpen}" aria-label="Filtres">${svg('<path d="M4 6h16M7 12h10M10 18h4"/>', 20)}${active ? `<span class="badge">${active}</span>` : ""}</button></div>
+    ${ui.recFiltOpen ? recipeFilterBar("book") : ""}`;
+  // Carte « Ma semaine » réduite à une ligne.
+  const week = `<section class="card week-mini">
+      <span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</span>
+      <a class="grow" href="#/menu" style="text-decoration:none;color:inherit;min-width:0"><span class="t" style="white-space:nowrap">Ma semaine</span>
+        <span class="s" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${menu.length ? esc(menu.map((e) => e.recipe.title).join(" · ")) : "Aucun menu en cours"}</span></a>
+      <button class="chip sm" data-act="week-make" ${ui.busy ? "disabled" : ""}>${menu.length ? "Refaire" : "Composer"}</button>
+      <a class="chip sm" href="#/menu-ajout" style="text-decoration:none">Choisir</a></section>`;
+  let body;
+  if (q || active) {
+    body = `<section style="display:flex;flex-direction:column;gap:8px"><div class="row-between"><h2 class="rail-h">${plural(scored.length, "recette", "recettes")}</h2>${active ? `<button class="link-btn" data-act="rf-reset">Effacer les filtres</button>` : ""}</div>
+      ${scored.length ? `<div class="rc-grid">${scored.map((x) => card(x.recipe, 0)).join("")}</div>` : `<p class="empty-state">Aucune recette ne correspond.</p>`}</section>`;
   } else {
-    const q = E.normTxt(ui.bookSearch || "");
-    const list = filteredBook(ui.bookSearch || "");
-    const shown = list.slice(0, ui.bookMore || 30);
-    body = `<label class="search">${I.search(18)}<input id="book-search" type="search" data-booksearch placeholder="Rechercher : poulet, gratin, curry…" value="${esc(ui.bookSearch || "")}" autocomplete="off" aria-label="Rechercher une recette"></label>
-      <section id="book-list" style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">${plural(list.length, "recette", "recettes")} · les plus faciles à faire avec votre stock en premier</h2>
-      ${shown.map(recipeCard).join("")}
-      ${list.length > shown.length ? `<button class="out-btn" data-act="book-more">Afficher plus</button>` : ""}</section>`;
+    const ready = scored.filter((x) => x.missing === 0).map((x) => x.recipe);
+    const almost = scored.filter((x) => x.missing > 0 && x.missing <= 2).map((x) => x.recipe);
+    const favs = recipes.filter(isFav).map((r) => (r.builtin && BOOK_BY_ID.get(r.id)) || R(r));
+    const prioLine = prio.length ? `<span class="s" style="color:var(--mint-ink)">À finir vite : ${esc(prio.map((x) => x.product.name).join(", "))}</span>` : "";
+    body = `${prioLine}
+      ${rail("Avec mes stocks", scored.slice(0, 12).map((x) => x.recipe), "", ready.length ? `· ${ready.length} prêtes` : "· les plus proches")}
+      ${rail("★ Mes favoris", favs)}
+      ${bookThemes().map(([t, n]) => rail(esc(t), scored.filter((x) => x.recipe.theme === t).map((x) => x.recipe),
+        `<button class="link-btn" data-act="rf" data-field="theme" data-v="${esc(t)}">Tout voir (${n}) ›</button>`)).join("")}`;
   }
   return `<main class="screen">${offlineBanner()}
-    <div class="top"><div class="grow"><h1>Recettes</h1><span class="sub">${BOOK.length} recettes intégrées · gratuites, sans connexion à une IA</span></div>
+    <div class="top"><div class="grow"><h1>Recettes</h1></div>
       <a class="icon-btn" href="#/menu" aria-label="Menu de la semaine">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</a></div>
-    <div class="seg" role="group" aria-label="Mode"><button data-act="recmode" data-v="week" aria-pressed="${mode === "week"}">Ma semaine</button><button data-act="recmode" data-v="stock" aria-pressed="${mode === "stock"}">Avec mes stocks</button><button data-act="recmode" data-v="book" aria-pressed="${mode === "book"}">Le livre</button></div>
-    ${prio.length ? `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">À utiliser en priorité</span>
-      <span style="display:flex;flex-wrap:wrap;gap:4px">${prio.map((x) => `<span class="pill" style="background:var(--mint-soft);color:var(--mint-ink)">${esc(x.product.name)} · ${frDate(x.lot.expiry).slice(0, 5)}</span>`).join("")}</span></section>` : ""}
-    ${filters}
+    ${top}
+    ${week}
     ${body}
-    ${mesRecettes()}
   </main>${nav("recettes")}`;
 }
 
@@ -2350,6 +2365,7 @@ app.addEventListener("click", (e) => {
     case "rf": ui.recFilters[field] = ["maxTime", "days", "prepMax", "cookMax"].includes(field) && v ? Number(v) : v; render(); break;
     case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
     case "rf-favonly": ui.recFilters.favOnly = !ui.recFilters.favOnly; if (ui.recFilters.favOnly && !recipes.some(isFav)) showToast("Aucun favori pour l’instant : touchez ☆ sur une recette"); render(); break;
+    case "rf-toggle": ui.recFiltOpen = !ui.recFiltOpen; render(); break;
     case "rf-reset": Object.assign(ui.recFilters, { theme: "", prepMax: "", cookMax: "", difficulty: "", maxTime: "", exclude: [] }); render(); break;
     case "rf-gaspi": ui.recFilters.antigaspi = ui.recFilters.antigaspi === false; render(); break;
     case "rec-ask": case "rec-ask-chat": {
