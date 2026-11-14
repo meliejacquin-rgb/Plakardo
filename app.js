@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.10.1";
+const APP_VERSION = "2.10.2";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1414,6 +1414,7 @@ function viewRecette(id) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <button class="out-btn" data-act="rec-shop" data-v="${esc(r.id)}" ${nMiss ? "" : "disabled"}>Manquants aux courses${nMiss ? ` (${nMiss})` : ""}</button>
       <button class="out-btn" data-act="rec-menu" data-v="${esc(r.id)}" ${inMenu ? "disabled" : ""}>${inMenu ? "Dans le menu" : "Ajouter au menu"}</button></div>
+    ${!r.builtin && recipes.some((x) => x.id === r.id) ? `<button class="danger-btn${ui.recDelArmed === r.id ? " armed" : ""}" data-act="rec-delete" data-v="${esc(r.id)}">${ui.recDelArmed === r.id ? "Toucher encore pour supprimer définitivement" : "Supprimer cette recette"}</button>` : ""}
   </main><div class="cta-bar"><button class="cta" data-act="rec-cook" data-v="${esc(r.id)}">Je cuisine cette recette</button></div>`;
 }
 
@@ -2325,6 +2326,14 @@ app.addEventListener("click", (e) => {
       render(); break;
     case "menu-swap": composeWeek({ replaceIndex: Number(t.dataset.i) }); break;
     case "book-more": ui.bookMore = (ui.bookMore || 30) + 30; render(); break;
+    case "rec-delete": {
+      if (ui.recDelArmed !== v) { ui.recDelArmed = v; setTimeout(() => { if (ui.recDelArmed === v) { ui.recDelArmed = null; render(); } }, 4000); render(); break; }
+      ui.recDelArmed = null;
+      const list = (meta.menu?.entries || []).filter((e2) => e2.recipeId !== v);
+      if (list.length !== (meta.menu?.entries || []).length) setMenu(list);
+      store.deleteRecipe(v).then(() => { showToast("Recette supprimée"); go("#/recettes"); render(); }).catch((e) => { showToast(e?.message || "Suppression impossible"); render(); });
+      break;
+    }
     case "rec-cook": { const r = findRecipe(v); if (r) cookFromRecipe(r); break; }
     case "menu-port": { const list = [...(meta.menu?.entries || [])]; const e2 = list[Number(t.dataset.i)]; if (e2) { e2.portions = Math.max(1, (e2.portions || 2) + Number(v)); setMenu(list); } break; }
     case "menu-del": { const list = [...(meta.menu?.entries || [])]; list.splice(Number(t.dataset.i), 1); setMenu(list); break; }
