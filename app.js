@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.12.1";
+const APP_VERSION = "2.13.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -891,14 +891,18 @@ function viewCategories() {
     <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Catégories</h1><span class="sub">Ajouter, renommer, réordonner</span></div></div>
     <div class="card" style="padding:4px 10px">${CATS.map((c, i) => {
       const used = products.some((p) => p.categoryId === c.id);
-      return `${ui.catPick === c.id ? catPicker(c) : ""}<div class="list-row" style="padding-left:4px"><button class="cat-ico sm ${catCls(c.id)}" style="border:0" data-act="cat-pick" data-v="${c.id}" aria-label="Changer l’icône de ${esc(c.name)}">${catIcon(c.id, 18)}</button>
+      const delBox = ui.catDel && ui.catDel.id === c.id ? `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;border-color:var(--warn);margin:6px 0">
+        <span class="t">Supprimer « ${esc(c.name)} » ?</span><span class="s">${plural(products.filter((p) => p.categoryId === c.id).length, "produit", "produits")} à déplacer vers :</span>
+        <div class="chips">${CATS.filter((x) => x.id !== c.id).map((x) => `<button class="chip sm" data-act="catdel-to" data-v="${x.id}" aria-pressed="${ui.catDel.to === x.id}">${esc(x.name)}</button>`).join("")}</div>
+        <button class="danger-btn armed" data-act="catdel-go">Déplacer les produits et supprimer</button><button class="link-btn" data-act="catdel-cancel">Annuler</button></div>` : "";
+      return `${ui.catPick === c.id ? catPicker(c) : ""}${delBox}<div class="list-row" style="padding-left:4px"><button class="cat-ico sm ${catCls(c.id)}" style="border:0" data-act="cat-pick" data-v="${c.id}" aria-label="Changer l’icône de ${esc(c.name)}">${catIcon(c.id, 18)}</button>
         <input class="input sm" style="flex:1" data-catname="${c.id}" value="${esc(c.name)}" aria-label="Nom de la catégorie">
         <button class="sc-x" data-act="cat-up" data-v="${c.id}" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="sc-x" data-act="cat-del" data-v="${c.id}" aria-label="Supprimer ${esc(c.name)}" ${used ? 'style="opacity:.35"' : ""}>×</button></div>`;
+        <button class="sc-x" data-act="cat-del" data-v="${c.id}" aria-label="Supprimer ${esc(c.name)}">×</button></div>`;
     }).join("")}</div>
     <form id="cat-add" class="search" style="padding-right:6px"><input id="cat-new" placeholder="Nouvelle catégorie (ex. Entretien, Bébé)" autocomplete="off" aria-label="Nouvelle catégorie">
       <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>
-    <p class="hint">Touchez l’icône d’une catégorie pour la changer. Une catégorie qui contient des produits ne peut pas être supprimée.</p>
+    <p class="hint">Touchez l’icône d’une catégorie pour la changer. Pour supprimer une catégorie qui contient des produits, Plakardo vous demande où les déplacer.</p>
     ${CAT_SUGGEST.filter(([n]) => !CATS.some((c) => c.name.toLowerCase() === n.toLowerCase())).length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Catégories courantes · un appui pour ajouter</h2>
       <div class="chips">${CAT_SUGGEST.filter(([n]) => !CATS.some((c) => c.name.toLowerCase() === n.toLowerCase())).map(([n, ic, col]) => `<button class="chip sm" data-act="cat-suggest" data-v="${esc(n)}" style="display:inline-flex;align-items:center;gap:6px"><span class="${"c-" + col}" style="display:inline-flex;border-radius:8px;padding:2px">${svg(CAT_ICONS[ic][1], 16)}</span>${esc(n)}</button>`).join("")}</div></section>` : ""}
   </main><div class="cta-bar"><button class="cta" data-act="cat-save">Enregistrer les noms</button></div>`;
@@ -913,20 +917,36 @@ function catPicker(c) {
     <button class="link-btn" data-act="cat-pick" data-v="">Fermer</button></div>`;
 }
 const catList = () => CATS.map((c, i) => ({ id: c.id, name: c.name, order: i, icon: c.icon || "", color: c.color || "" }));
+async function deleteLocation() {
+  const { id: lid, to } = ui.locDel || {}; if (!lid || !to || !canWrite()) return;
+  const lines = [];
+  for (const p of products) for (const l of E.lotsOf(p)) if (l.loc === lid && Number(l.qty) > 0) lines.push({ kind: "transfer", productId: p.id, lotId: l.id, amount: Number(l.qty), toLoc: to });
+  try {
+    if (lines.length) await store.runOp({ id: newOpId(), type: "transfer", label: `Lieu ${locName(lid)} supprimé → ${locName(to)}`, by: me(), lines });
+    await Promise.all(products.filter((p) => p.homeLoc === lid).map((p) => store.updateProduct(p.id, { homeLoc: to })));
+    await store.setMeta("locations", { list: locations().filter((l) => l.id !== lid) });
+    showToast(`Lieu supprimé · produits transférés vers ${locName(to)}`); ui.locDel = null;
+  } catch (e) { showToast(e?.message || "Suppression impossible"); }
+  render();
+}
 function viewLieux() {
   const locs = locations();
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Lieux</h1><span class="sub">Créer, renommer, réordonner</span></div></div>
     <div class="card" style="padding:4px 10px">${locs.map((l, i) => {
       const used = products.some((p) => inLoc(p, l.id) && E.isAvailable(p));
-      return `<div class="list-row" style="padding-left:4px"><span style="color:var(--primary)">${locIcon(l)}</span>
+      const delBox = ui.locDel && ui.locDel.id === l.id ? `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;border-color:var(--warn);margin:6px 0">
+        <span class="t">Supprimer « ${esc(l.name)} » ?</span><span class="s">Ses produits seront transférés vers :</span>
+        <div class="chips">${locs.filter((x) => x.id !== l.id).map((x) => `<button class="chip sm" data-act="locdel-to" data-v="${x.id}" aria-pressed="${ui.locDel.to === x.id}">${esc(x.name)}</button>`).join("")}</div>
+        <button class="danger-btn armed" data-act="locdel-go">Transférer et supprimer</button><button class="link-btn" data-act="locdel-cancel">Annuler</button></div>` : "";
+      return `${delBox}<div class="list-row" style="padding-left:4px"><span style="color:var(--primary)">${locIcon(l)}</span>
         <input class="input sm" style="flex:1" data-locname="${l.id}" value="${esc(l.name)}" aria-label="Nom du lieu">
         <button class="sc-x" data-act="loc-up" data-v="${l.id}" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
-        <button class="sc-x" data-act="loc-del" data-v="${l.id}" aria-label="Supprimer ${esc(l.name)}" title="${used ? "Transférez d’abord son contenu" : "Supprimer"}" ${used ? 'style="opacity:.35"' : ""}>×</button></div>`;
+        <button class="sc-x" data-act="loc-del" data-v="${l.id}" aria-label="Supprimer ${esc(l.name)}">×</button></div>`;
     }).join("")}</div>
     <form id="loc-add" class="search" style="padding-right:6px"><input id="loc-new" placeholder="Nouveau lieu (ex. Garage)" autocomplete="off" aria-label="Nouveau lieu">
       <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>
-    <p class="hint">Un lieu qui contient des produits ne peut pas être supprimé : transférez d’abord ses lots.</p>
+    <p class="hint">Pour supprimer un lieu qui contient des produits, Plakardo vous demande où les transférer.</p>
   </main><div class="cta-bar"><button class="cta" data-act="loc-save">Enregistrer les noms</button></div>`;
 }
 
@@ -1325,12 +1345,25 @@ function recipeCard(r) {
     </span></a>`;
 }
 
-function viewRecettes() {
+// Filtres visibles : cuisine, temps de préparation, temps de cuisson (+ réglages avancés repliés).
+function bookThemes() {
+  const c = {};
+  for (const r of BOOK) c[r.theme] = (c[r.theme] || 0) + 1;
+  return Object.entries(c).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0], "fr"));
+}
+function recipeFilterBar(mode = "book") {
   const f = ui.recFilters;
-  const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
-  const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
-  const mode = ["week", "stock", "book"].includes(ui.recMode) ? ui.recMode : "week";
-  const filters = `<details class="card" style="padding:12px 14px"><summary class="t" style="cursor:pointer">Filtres · ${mode === "week" ? `${f.days} jours · ${esc(f.meal.split(" (")[0])} · ` : ""}${f.portions} pers.${f.theme ? " · " + esc(f.theme) : ""}${f.maxTime ? ` · ≤ ${f.maxTime} min` : ""}${f.difficulty ? " · " + esc(f.difficulty) : ""}</summary>
+  const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field] || "") === String(v)}">${esc(label)}</button>`;
+  const active = ["theme", "prepMax", "cookMax", "difficulty"].filter((k) => f[k]).length + ((f.exclude || []).length ? 1 : 0);
+  return `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+    <div class="row-between"><span class="eyebrow">Filtres${active ? ` (${active})` : ""}</span>${active ? `<button class="link-btn" style="min-height:28px" data-act="rf-reset">Réinitialiser</button>` : ""}</div>
+    <span class="label">Cuisine</span>
+    <div class="chips scroll-x">${chip("theme", "", "Toutes")}${bookThemes().map(([t, n]) => chip("theme", t, `${t} · ${n}`)).join("")}</div>
+    <span class="label">Préparation</span>
+    <div class="chips">${chip("prepMax", "", "Peu importe")}${[10, 15, 20].map((m) => chip("prepMax", m, `≤ ${m} min`)).join("")}</div>
+    <span class="label">Cuisson</span>
+    <div class="chips">${chip("cookMax", "", "Peu importe")}${[15, 20, 30].map((m) => chip("cookMax", m, `≤ ${m} min`)).join("")}</div>
+    <details><summary class="s" style="cursor:pointer;text-decoration:underline">Plus de réglages · ${f.portions} pers.${mode === "week" ? ` · ${f.days} jours · ${esc(f.meal)}` : ""}</summary>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
         <div class="row-between"><span class="label">Personnes</span><div class="qbox" style="padding:2px">
           <button class="round-btn" style="width:36px;height:36px;background:var(--soft);color:var(--ink)" data-act="rf-port" data-v="-1" aria-label="Moins">${I.minus(14)}</button>
@@ -1338,13 +1371,26 @@ function viewRecettes() {
           <button class="round-btn" style="width:36px;height:36px;background:var(--primary);color:var(--primary-ink)" data-act="rf-port" data-v="1" aria-label="Plus">${I.plus(14)}</button></div></div>
         ${mode === "week" ? `<span class="label">Nombre de jours</span><div class="chips">${[3, 4, 5, 6, 7].map((n) => chip("days", n, `${n} jours`)).join("")}</div>
         <span class="label">Repas</span><div class="chips">${["dîner", "déjeuner", "déjeuner et dîner"].map((m) => chip("meal", m, m)).join("")}</div>` : ""}
-        ${mode === "book" ? `<span class="label">Type</span><div class="chips">${chip("dishType", "", "Tous")}${E.DISH_TYPES.map((t) => chip("dishType", t, t)).join("")}</div>` : ""}
-        <span class="label">Cuisine</span><select class="input" data-rf="theme" aria-label="Cuisine"><option value="">Toutes</option>${E.THEMES.map((t) => `<option ${f.theme === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-        <span class="label">Temps total</span><div class="chips">${chip("maxTime", "", "Peu importe")}${[20, 30, 45, 60].map((m) => chip("maxTime", m, `≤ ${m} min`)).join("")}</div>
         <span class="label">Difficulté</span><div class="chips">${chip("difficulty", "", "Peu importe")}${["Facile", "Moyenne", "Avancée"].map((x) => chip("difficulty", x, x)).join("")}</div>
         <input class="input" data-rf="exclude" value="${esc(listTxt(f.exclude))}" placeholder="À exclure (ex. porc, champignons)" aria-label="Ingrédients exclus">
         ${prefs().allergies?.length ? `<span class="s">Allergies exclues : ${esc(listTxt(prefs().allergies))} · <a href="#/profil">modifier</a></span>` : `<span class="s">Allergies et refus : <a href="#/profil">à régler dans Profil</a></span>`}
-      </div></details>`;
+      </div></details>
+  </section>`;
+}
+// Livre filtré, classé selon le stock (ce qui est disponible et ce qui périme bientôt en premier).
+function filteredBook(q = "") {
+  const f = ui.recFilters;
+  const nq = E.normTxt(q);
+  const ok = BOOK.filter((r) => E.recipeAllowed(r, { ...f, dishType: f.dishType || "" }, prefs()) && (!nq || E.normTxt(r.title + " " + r.theme + " " + r.ingredients.map((g) => g.name).join(" ")).includes(nq)));
+  const ranked = E.suggestRecipes(ok, products, { filters: { portions: f.portions }, prefs: {}, limit: ok.length });
+  return ranked.map((x) => x.recipe);
+}
+function viewRecettes() {
+  const f = ui.recFilters;
+  const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 5);
+  const chip = (field, v, label) => `<button class="chip sm" data-act="rf" data-field="${field}" data-v="${esc(v)}" aria-pressed="${String(f[field]) === String(v)}">${esc(label)}</button>`;
+  const mode = ["week", "stock", "book"].includes(ui.recMode) ? ui.recMode : "week";
+  const filters = recipeFilterBar(mode);
   let body = "";
   if (mode === "week") {
     const menu = menuEntries();
@@ -1362,11 +1408,10 @@ function viewRecettes() {
       ${list.length ? list.map((x) => recipeCard(x.recipe)).join("") : `<p class="empty-state">Aucune recette ne correspond aux filtres.</p>`}</section>`;
   } else {
     const q = E.normTxt(ui.bookSearch || "");
-    const list = BOOK.filter((r) => (!f.dishType || r.type === f.dishType) && (!f.theme || r.theme === f.theme) && (!f.maxTime || r.prepMin + r.cookMin <= Number(f.maxTime)) && (!f.difficulty || r.difficulty === f.difficulty)
-      && (!q || E.normTxt(r.title + " " + r.ingredients.map((g) => g.name).join(" ")).includes(q)));
+    const list = filteredBook(ui.bookSearch || "");
     const shown = list.slice(0, ui.bookMore || 30);
     body = `<label class="search">${I.search(18)}<input id="book-search" type="search" data-booksearch placeholder="Rechercher : poulet, gratin, curry…" value="${esc(ui.bookSearch || "")}" autocomplete="off" aria-label="Rechercher une recette"></label>
-      <section id="book-list" style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">${plural(list.length, "recette", "recettes")}</h2>
+      <section id="book-list" style="display:flex;flex-direction:column;gap:10px"><h2 class="eyebrow">${plural(list.length, "recette", "recettes")} · les plus faciles à faire avec votre stock en premier</h2>
       ${shown.map(recipeCard).join("")}
       ${list.length > shown.length ? `<button class="out-btn" data-act="book-more">Afficher plus</button>` : ""}</section>`;
   }
@@ -1553,14 +1598,15 @@ function viewMenuAjout() {
   const day = ui.mpDay ?? nextFreeDay();
   const q = E.normTxt(ui.mpSearch || "");
   const inMenu = new Set((meta.menu?.entries || []).map((e) => e.recipeId));
-  let list = tab === "fav" ? recipes.filter(isFav) : BOOK.filter((r) => r.type === "Plat" || ui.mpAll);
-  if (q) list = list.filter((r) => E.normTxt(r.title + " " + r.ingredients.map((g) => g.name).join(" ")).includes(q));
+  let list = tab === "fav" ? recipes.filter(isFav) : filteredBook(ui.mpSearch || "");
+  if (q && tab === "fav") list = list.filter((r) => E.normTxt(r.title + " " + r.ingredients.map((g) => g.name).join(" ")).includes(q));
   const shown = list.slice(0, ui.mpMore || 40);
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/menu" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:24px">Choisir une recette</h1><span class="sub">Ajoutée au menu pour le jour choisi</span></div></div>
     <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Jour</span>
       <div class="chips">${E.weekDays(7).map((d) => `<button class="chip sm" data-act="mp-day" data-v="${d}" aria-pressed="${day === d}">${d}</button>`).join("")}<button class="chip sm" data-act="mp-day" data-v="" aria-pressed="${day === ""}">Sans jour</button></div></section>
     <div class="seg" role="group"><button data-act="mp-tab" data-v="fav" aria-pressed="${tab === "fav"}">Mes favoris (${recipes.filter(isFav).length})</button><button data-act="mp-tab" data-v="book" aria-pressed="${tab === "book"}">Le livre</button></div>
+    ${tab === "book" ? recipeFilterBar("book") : ""}
     <label class="search">${I.search(18)}<input id="mp-search" type="search" data-mpsearch placeholder="Rechercher : poulet, gratin…" value="${esc(ui.mpSearch || "")}" autocomplete="off" aria-label="Rechercher"></label>
     ${tab === "fav" && !list.length && !q ? `<p class="empty-state">Pas encore de favoris. Sur une recette, touchez l’étoile ☆ pour la retrouver ici.</p>` : ""}
     <div id="mp-list" class="card list">${shown.map((r0) => { const r = R(r0); const sc = E.scoreRecipe(r, products); return `<div class="list-row">${vignette(r, 40)}
@@ -2275,9 +2321,13 @@ app.addEventListener("click", (e) => {
     case "ls-go": lotSheetGo(); break;
     case "loc-up": { const list = locations().map((l, i) => ({ ...l, order: i })); const i = list.findIndex((l) => l.id === v); if (i > 0) { [list[i - 1].order, list[i].order] = [i, i - 1]; store.setMeta("locations", { list }); } break; }
     case "loc-del": {
-      if (products.some((p) => inLoc(p, v) && E.isAvailable(p))) { showToast("Ce lieu contient des produits : transférez-les d’abord"); render(); break; }
-      store.setMeta("locations", { list: locations().filter((l) => l.id !== v) }); break;
+      if (locations().length <= 1) { showToast("Il faut garder au moins un lieu"); render(); break; }
+      if (products.some((p) => inLoc(p, v) || p.homeLoc === v)) { ui.locDel = { id: v, to: (locations().find((l) => l.id !== v) || {}).id }; render(); break; }
+      store.setMeta("locations", { list: locations().filter((l) => l.id !== v) }); showToast("Lieu supprimé"); break;
     }
+    case "locdel-to": if (ui.locDel) { ui.locDel.to = v; render(); } break;
+    case "locdel-cancel": ui.locDel = null; render(); break;
+    case "locdel-go": deleteLocation(); break;
     case "loc-save": {
       const list = locations().map((l, i) => { const el = app.querySelector(`[data-locname="${l.id}"]`); return { ...l, order: i, name: (el && el.value.trim()) || l.name }; });
       store.setMeta("locations", { list }); showToast("Lieux enregistrés"); go("#/placards"); break;
@@ -2297,9 +2347,10 @@ app.addEventListener("click", (e) => {
     case "prep-load": { const r = recipes.find((x) => x.id === v); if (r) { ui.cook = []; r.ingredients.forEach((g) => { if (find(g.productId)) cookAdd(g.productId, g.qty ?? undefined); }); ui.cookLabel = r.title; render(); } break; }
     case "op-undo": undoOp(v); break;
     case "recmode": ui.recMode = v; render(); break;
-    case "rf": ui.recFilters[field] = (field === "maxTime" || field === "days") && v ? Number(v) : v; render(); break;
+    case "rf": ui.recFilters[field] = ["maxTime", "days", "prepMax", "cookMax"].includes(field) && v ? Number(v) : v; render(); break;
     case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
     case "rf-favonly": ui.recFilters.favOnly = !ui.recFilters.favOnly; if (ui.recFilters.favOnly && !recipes.some(isFav)) showToast("Aucun favori pour l’instant : touchez ☆ sur une recette"); render(); break;
+    case "rf-reset": Object.assign(ui.recFilters, { theme: "", prepMax: "", cookMax: "", difficulty: "", maxTime: "", exclude: [] }); render(); break;
     case "rf-gaspi": ui.recFilters.antigaspi = ui.recFilters.antigaspi === false; render(); break;
     case "rec-ask": case "rec-ask-chat": {
       const text = E.buildPrompt({ products, locations: locations(), filters: ui.recFilters, prefs: prefs(), mode: ui.recMode });
@@ -2348,9 +2399,20 @@ app.addEventListener("click", (e) => {
     case "week-make": composeWeek(); break;
     case "cat-up": { const list = catList(); const i = list.findIndex((c) => c.id === v); if (i > 0) { [list[i - 1].order, list[i].order] = [i, i - 1]; store.setMeta("categories", { list }); } break; }
     case "cat-del": {
-      if (products.some((p) => p.categoryId === v)) { showToast("Cette catégorie contient des produits : changez-les d’abord de catégorie"); render(); break; }
-      if (CATS.length <= 1) break;
-      store.setMeta("categories", { list: catList().filter((c) => c.id !== v) }); break;
+      if (CATS.length <= 1) { showToast("Il faut garder au moins une catégorie"); render(); break; }
+      if (products.some((p) => p.categoryId === v)) { ui.catDel = { id: v, to: (CATS.find((c) => c.id !== v) || {}).id }; render(); break; }
+      store.setMeta("categories", { list: catList().filter((c) => c.id !== v) }); showToast("Catégorie supprimée"); break;
+    }
+    case "catdel-to": if (ui.catDel) { ui.catDel.to = v; render(); } break;
+    case "catdel-cancel": ui.catDel = null; render(); break;
+    case "catdel-go": {
+      const { id: cid, to } = ui.catDel || {}; if (!cid || !to || !canWrite()) break;
+      const moved = products.filter((p) => p.categoryId === cid);
+      Promise.all(moved.map((p) => store.updateProduct(p.id, { categoryId: to })))
+        .then(() => store.setMeta("categories", { list: catList().filter((c) => c.id !== cid) }))
+        .then(() => { showToast(`${plural(moved.length, "produit déplacé", "produits déplacés")} vers ${CAT[to]?.name || ""} · catégorie supprimée`); ui.catDel = null; render(); })
+        .catch((e) => { showToast(e?.message || "Suppression impossible"); render(); });
+      break;
     }
     case "cat-pick": ui.catPick = ui.catPick === v ? null : v; render(); break;
     case "cat-icon": { const list = catList().map((c) => (c.id === id ? { ...c, icon: v } : c)); store.setMeta("categories", { list }); break; }

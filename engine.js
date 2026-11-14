@@ -650,10 +650,12 @@ export function resolveRecipe(r, products) {
   }) };
 }
 
-function recipeAllowed(r, f, pr) {
+export function recipeAllowed(r, f, pr) {
   if (f.dishType && r.type !== f.dishType) return false;
   if (f.theme && r.theme !== f.theme) return false;
   if (f.maxTime && (r.prepMin + r.cookMin) > Number(f.maxTime)) return false;
+  if (f.prepMax && r.prepMin > Number(f.prepMax)) return false;
+  if (f.cookMax && r.cookMin > Number(f.cookMax)) return false;
   if (f.difficulty && r.difficulty !== f.difficulty) return false;
   const words = normTxt(r.ingredients.map((g) => g.name).join(" | ") + " " + r.title);
   const bad = [...(f.exclude || []), ...((pr && pr.allergies) || []), ...((pr && pr.dislikes) || [])].map(normTxt).filter(Boolean);
