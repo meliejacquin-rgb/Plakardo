@@ -776,6 +776,7 @@ Riz à la créole aux haricots rouges | Plat | Créole | 10 | 25 | Facile
 
 Pita grecque au poulet et tzatziki | Plat | Grec | 20 | 15 | Facile
 @id b-pita-grecque-au-poulet-et-tzatziki
+@img img/recettes/b-pita-grecque-au-poulet-et-tzatziki.webp
 - pain pita: 4 pièce
 - poulet: 280 g
 - concombre: 150 g
