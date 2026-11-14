@@ -4,8 +4,8 @@
 const NUM_WORDS = { un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8, neuf: 9, dix: 10, onze: 11, douze: 12, quinze: 15, vingt: 20, trente: 30, quarante: 40, cinquante: 50, cent: 100, demi: 0.5, "demie": 0.5, "une douzaine": 12, douzaine: 12, quelques: 2, plusieurs: 2 };
 const UNIT_WORDS = [
   [/^(kilos?|kilogrammes?|kg)$/, "kg"], [/^(grammes?|gr?|g)$/, "g"], [/^(litres?|l)$/, "l"], [/^(centilitres?|cl)$/, "cl"], [/^(millilitres?|ml)$/, "ml"],
-  [/^(bo[iî]tes?|conserves?)$/, "boîte"], [/^(paquets?|sachets?)$/, "sachet"], [/^(bouteilles?|flacons?)$/, "flacon"], [/^(tubes?)$/, "tube"],
-  [/^(sacs?)$/, "sac"], [/^(rouleaux?|lots?|bouquets?|t[eê]tes?|filets?)$/, "pièce"], [/^(pots?|barquettes?|briques?|packs?|tranches?|pi[eè]ces?|morceaux?)$/, "pièce"],
+  [/^(bo[iî]tes?|conserves?)$/, "boîte"], [/^(paquets?)$/, "paquet"], [/^(sachets?)$/, "sachet"], [/^(bouteilles?)$/, "bouteille"], [/^(flacons?)$/, "flacon"], [/^(tubes?)$/, "tube"],
+  [/^(sacs?)$/, "sac"], [/^(rouleaux?)$/, "rouleau"], [/^(pots?)$/, "pot"], [/^(lots?|bouquets?|t[eê]tes?|filets?)$/, "pièce"], [/^(pots?|barquettes?|briques?|packs?|tranches?|pi[eè]ces?|morceaux?)$/, "pièce"],
 ];
 const norm = (s) => String(s || "").toLowerCase().replace(/œ/g, "oe").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -84,7 +84,7 @@ export function parsePhrase(text) {
   const chunks0 = src.split(/\s*(?:,(?!\d)|;|\bet\b(?!\s+demi)|\bpuis\b|\bplus\b|\+|\bavec\b)\s*/i).map((c) => c.trim()).filter(Boolean);
   // La dictée met parfois une virgule au milieu d'un article : « 200 g, emmental râpé », « 1 kg de riz, basmati à 2,49 € »
   const hasQty = (c) => /^(\d|un\b|une\b|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|douze|des\b|du\b|de la\b|demi|quelques|plusieurs)/i.test(c);
-  const onlyQty = (c) => /^(\d+(?:[.,]\d+)?|une?|deux|trois|quatre|cinq|six|dix|douze)\s*(g|kg|l|cl|ml|kilos?|grammes?|litres?|paquets?|bo[iî]tes?|sachets?|bouteilles?)?$/i.test(c.trim());
+  const onlyQty = (c) => /^(\d+(?:[.,]\d+)?|une?|deux|trois|quatre|cinq|six|dix|douze)\s*(g|kg|l|cl|ml|kilos?|grammes?|litres?|paquets?|bo[iî]tes?|sachets?|bouteilles?|rouleaux?|tubes?|pots?|packs?|barquettes?|lots?|filets?|tranches?|briques?|flacons?|sacs?|pi[eè]ces?|morceaux?)?(\s+(de|d'))?$/i.test(c.trim());
   const hasPrice = (c) => /(\d|\b(?:un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\b)\s*(€|euros?|centimes?)/i.test(c);
   const chunks = [];
   for (const c of chunks0) {

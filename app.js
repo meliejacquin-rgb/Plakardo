@@ -15,11 +15,11 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.9";
+const APP_VERSION = "2.7.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
-const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
-const PLURAL = { pièce: "pièces", boîte: "boîtes", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", g: "g", kg: "kg", ml: "ml", L: "L" };
+const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
+const PLURAL = { pièce: "pièces", paquet: "paquets", boîte: "boîtes", bouteille: "bouteilles", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", pot: "pots", rouleau: "rouleaux", g: "g", kg: "kg", ml: "ml", cl: "cl", L: "L" };
 
 const svg = (body, size = 24, sw = 1.8) =>
   `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
@@ -1788,6 +1788,7 @@ function tkProductOptions(sel) {
   const groups = CATS.map((c) => `<optgroup label="${c.name}">${products.filter((p) => p.categoryId === c.id).sort(byName).map((p) => `<option value="${p.id}" ${sel === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
   return `<option value="new" ${sel === "new" ? "selected" : ""}>＋ Nouveau produit</option>${groups}`;
 }
+const unitNorm = (u) => (u === "l" ? "L" : UNITS.includes(u) ? u : "pièce");
 function lineEstimate(l) {
   const p = l.productId && l.productId !== "new" ? find(l.productId) : null;
   return p && p.lastPrice && l.amount ? p.lastPrice * parseQ(l.amount) : null;
@@ -1820,7 +1821,7 @@ function viewTicket() {
     const cat = p ? p.categoryId : l.newCat;
     const unit = p ? p.unit || "pièce" : l.newUnit;
     return `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;${l.include ? "" : "opacity:.55"}">
-      <div class="row-between" style="gap:8px"><span class="grow" style="min-width:0"><span class="t" style="display:block">${esc(l.label)}</span><span class="s" style="display:block">${l.qty > 1 && l.unitPrice ? `${l.qty} × ${euro(l.unitPrice)} · ` : ""}${l.weight ? `${fmtQ(l.weight.value)} ${l.weight.unit}` : ""}${l.ean ? ` · EAN ${l.ean}` : ""}${l.kind === "deposit" ? " · consigne" : ""}</span></span>
+      <div class="row-between" style="gap:8px"><button class="sc-x" data-act="tk-del" data-i="${i}" aria-label="Supprimer cet article" title="Supprimer" style="flex:none">×</button><span class="grow" style="min-width:0"><span class="t" style="display:block">${esc(l.label)}</span><span class="s" style="display:block">${l.qty > 1 && l.unitPrice ? `${l.qty} × ${euro(l.unitPrice)} · ` : ""}${l.weight ? `${fmtQ(l.weight.value)} ${l.weight.unit}` : ""}${l.ean ? ` · EAN ${l.ean}` : ""}${l.kind === "deposit" ? " · consigne" : ""}</span></span>
         ${voice ? `<span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:68px;border:1px solid var(--border);font-size:15px" inputmode="decimal" data-tkprice="${i}" value="${l.price != null ? fmtQ(l.price) : ""}" placeholder="${lineEstimate(l) != null ? fmtQ(Math.round(lineEstimate(l) * 100) / 100) : "prix"}" aria-label="Prix"><span class="s">€</span></span>`
           : `<strong class="h" style="font-size:16px">${euro(l.price)}</strong>`}</div>
       ${l.kind === "deposit" ? `<span class="s">Consigne : comptée dans la dépense, pas dans le stock.</span>` : `
@@ -1828,7 +1829,7 @@ function viewTicket() {
       ${l.include ? `<select class="input sm" data-tkp="${i}" aria-label="Produit du stock">${tkProductOptions(l.productId)}</select>
       ${l.productId === "new" ? `<input class="input sm" data-tkname="${i}" value="${esc(l.newName)}" aria-label="Nom du nouveau produit">
         <div class="chips">${CATS.map((c) => `<button class="chip sm" data-act="tk-cat" data-i="${i}" data-v="${c.id}" aria-pressed="${l.newCat === c.id}">${c.name}</button>`).join("")}</div>` : ""}
-      <div class="row-between"><span class="label">Quantité à ranger</span><span style="display:flex;align-items:center;gap:6px"><input class="qinput sm" style="width:70px;border:1px solid var(--border)" inputmode="decimal" data-tkq="${i}" value="${fmtQ(l.amount)}" aria-label="Quantité"><span class="s">${esc(unit)}</span></span></div>
+      <div class="row-between"><span class="label">Quantité à ranger</span><span style="display:flex;align-items:center;gap:6px"><input class="qinput sm" style="width:70px;border:1px solid var(--border)" inputmode="decimal" data-tkq="${i}" value="${fmtQ(l.amount)}" aria-label="Quantité">${p ? `<span class="s">${esc(unit)}</span>` : `<select class="input sm" style="width:auto;min-width:96px;padding:0 8px" data-tkunit="${i}" aria-label="Unité">${UNITS.map((u) => `<option ${u === unitNorm(unit) ? "selected" : ""}>${u}</option>`).join("")}</select>`}</span></div>
       ${DATED_CATS.includes(cat) ? `<input class="input sm" inputmode="numeric" data-tkd="${i}" value="${esc(l.dateText)}" placeholder="${cat === "pharma" ? "Péremption" : "DLC"} facultative : JJ/MM/AA (ou Scanner du texte)" aria-label="Date de ${esc(l.label)}">
         <div class="chips">${[[3, "+3 j"], [7, "+1 sem."], [30, "+1 mois"], [180, "+6 mois"]].map(([n, lab]) => `<button class="chip sm" data-act="tk-date" data-i="${i}" data-v="${n}">${lab}</button>`).join("")}${l.expiry ? `<span class="s" style="align-self:center;color:var(--mint-ink);font-weight:700">${l.estimated ? "≈ " : ""}${frDate(l.expiry)}${l.estimated ? " (estimée)" : ""}</span>` : ""}</div>` : ""}` : ""}`}
     </div>`;
@@ -2169,6 +2170,7 @@ app.addEventListener("click", (e) => {
     case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; applyEstimate(l); render(); } break; }
     case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); l.estimated = false; render(); } break; }
     case "tk-go": ticketGo(); break;
+    case "tk-del": { const i = Number(t.dataset.i); if (ui.tk?.lines?.[i]) { ui.tk.lines.splice(i, 1); render(); } break; }
     case "bud-manual": ui.budgetManual = ui.budgetManual ? null : { store: "", total: "", cat: "alim", date: E.todayIso() }; render(); break;
     case "bm-cat": if (ui.budgetManual) { ui.budgetManual.cat = v; render(); } break;
     case "bm-save": {
@@ -2243,6 +2245,7 @@ app.addEventListener("input", (e) => {
   if (t.matches("[data-qatext]")) { ui.qa.text = t.value; return; }
   if (t.matches("[data-tktext]")) { ui.tk = { ...(ui.tk || {}), step: "text", text: t.value }; return; }
   if (t.matches("[data-tkp]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkp)]; if (l) { l.productId = t.value; l.amount = stockAmount(l, find(t.value)); applyEstimate(l); render(); } return; }
+  if (t.matches("[data-tkunit]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkunit)]; if (l) { l.newUnit = t.value === "L" ? "l" : t.value; l.amount = stockAmount(l, null); render(); } return; }
   if (t.matches("[data-tkprice]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkprice)]; if (l) l.price = t.value.trim() === "" ? null : parseQ(t.value); return; }
   if (t.matches("[data-tktotal]")) { if (ui.tk) ui.tk.total = t.value.trim() === "" ? null : parseQ(t.value); return; }
   if (t.matches("[data-tkname]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkname)]; if (l) l.newName = t.value; return; }
