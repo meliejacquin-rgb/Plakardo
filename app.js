@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.4";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -914,11 +914,11 @@ function viewAjouter() {
       <button class="mic-btn${ui.listening ? " on" : ""}" data-act="mic">${IC.mic(30)}<span>${ui.listening ? "J’écoute… touchez pour arrêter" : CAN_LIVE_MIC ? "Toucher pour parler" : "Dicter avec le micro du clavier"}</span></button>
       <div id="mic-help" class="card" style="padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--soft)" ${ui.micHelp || !CAN_LIVE_MIC ? "" : "hidden"}>
         <span class="t">${CAN_LIVE_MIC ? "La dictée directe n’a rien entendu" : "Dictée avec le clavier de l’iPhone"}</span>
-        <span class="s">1. Touchez le bouton ci-dessus : le clavier s’ouvre.<br>2. Touchez le <strong>micro 🎙 en bas à droite du clavier</strong> et parlez.<br>3. Touchez le clavier pour arrêter, puis « Vérifier et ranger ».</span>
-        <span class="s">Pas de micro sur le clavier ? Réglages › Général › Clavier › activer « Dictée ».</span>
+        <span class="s">1. Touchez le bouton ci-dessus : le clavier s’ouvre.<br>2. <strong>Vérifiez que le clavier est en français</strong> : si la barre d’espace indique « English » ou « Deutsch », touchez le globe 🌐 jusqu’à « Français ». La dictée écoute dans la langue du clavier.<br>3. Touchez le <strong>micro 🎙 en bas à droite du clavier</strong> et parlez.<br>4. Touchez le clavier pour arrêter, puis « Vérifier et ranger ».</span>
+        <span class="s">Pas de micro sur le clavier ? Réglages › Général › Clavier › activer « Dictée ». Pas de clavier français ? Réglages › Général › Clavier › Claviers › Ajouter « Français ».</span>
         ${ui.micErr ? `<span class="s">Code : ${esc(ui.micErr)}</span>` : ""}
       </div>
-      <textarea id="qa-text" class="input" data-qatext rows="3" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
+      <textarea id="qa-text" class="input" data-qatext rows="3" lang="fr" autocapitalize="sentences" autocorrect="on" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
       <button class="cta" data-act="qa-go" ${qa.text.trim() ? "" : "disabled"}>${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
       <span class="add-sub">Les prix sont facultatifs. Sans prix, le budget utilise les derniers prix connus. Les dates de péremption sont estimées automatiquement.</span>`;
   } else {
