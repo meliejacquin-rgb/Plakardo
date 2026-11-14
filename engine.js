@@ -728,3 +728,29 @@ export function planWeek(book, products, { days = 5, perDay = 1, filters = {}, p
   }
   return picked;
 }
+
+// ── Rayons du magasin pour trier la liste de courses ──
+export const RAYONS = ["Fruits & légumes", "Boulangerie", "Viandes & poissons", "Produits laitiers & œufs", "Surgelés",
+  "Pâtes, riz & féculents", "Conserves & bocaux", "Sauces, épices & huiles", "Petit-déj & sucré", "Boissons", "Autres courses"];
+const RAYON_KW = [
+  // du plus précis au plus général
+  ["Surgelés", ["surgele", "glace", "tiefkuhl", "congele", "frites", "poelee surgelee"]],
+  ["Conserves & bocaux", ["conserve", "en boite", "boite de", "dose", "lait de coco", "creme de coco", "concasse", "coulis", "passata", "pulpe de tomate", "concentre", "pois chiche", "haricots rouges", "haricots blancs", "haricots noirs", "lentilles cuites", "mais doux", "thon", "sardine", "maquereau", "olive", "capre", "cornichon", "bocal", "pesto", "dosen"]],
+  ["Petit-déj & sucré", ["beurre de cacahuete", "cafe", "the ", "the vert", "infusion", "sucre", "chocolat", "cacao", "confiture", "miel", "biscuit", "gateau", "cereales", "muesli", "flocons d avoine", "compote", "sirop", "nutella", "pate a tartiner", "kaffee", "zucker", "honig", "levure chimique", "vanille"]],
+  ["Sauces, épices & huiles", ["huile", "vinaigre", "moutarde", "ketchup", "mayonnaise", "sauce", "soja", "bouillon", "cube", "epice", "curry", "paprika", "cumin", "curcuma", "garam", "piment", "poivre", "sel", "herbes de provence", "origan", "cannelle", "ras el hanout", "gingembre moulu", "harissa", "nuoc", "senf", "gewurz"]],
+  ["Produits laitiers & œufs", ["oeuf", "lait", "yaourt", "yogourt", "fromage", "beurre", "creme", "mozzarella", "feta", "parmesan", "emmental", "gruyere", "comte", "chevre", "ricotta", "mascarpone", "gorgonzola", "skyr", "fromage blanc", "petit suisse", "milch", "kase", "joghurt", "sahne", "butter", "quark", "eier"]],
+  ["Viandes & poissons", ["poulet", "dinde", "boeuf", "veau", "porc", "agneau", "canard", "jambon", "lardon", "bacon", "saucisse", "chorizo", "merguez", "steak", "hache", "escalope", "filet mignon", "viande", "saumon", "cabillaud", "colin", "lieu", "merlu", "poisson", "crevette", "moule", "truite", "surimi", "hahnchen", "rind", "schwein", "wurst", "fisch", "lachs", "schinken"]],
+  ["Boulangerie", ["pain", "baguette", "brioche", "tortilla", "wrap", "pita", "naan", "biscotte", "croissant", "brot", "brotchen"]],
+  ["Pâtes, riz & féculents", ["pate", "spaghetti", "penne", "tagliatelle", "fusilli", "macaroni", "gnocchi", "tortellini", "ravioli", "lasagne", "nouille", "soba", "ramen", "riz", "semoule", "couscous", "boulgour", "quinoa", "lentille", "farine", "polenta", "puree", "chapelure", "nudeln", "reis", "mehl"]],
+  ["Boissons", ["eau", "jus", "soda", "biere", "vin", "limonade", "cola", "wasser", "saft", "bier", "wein"]],
+  ["Fruits & légumes", ["pomme", "poire", "banane", "orange", "citron", "clementine", "mandarine", "fraise", "framboise", "raisin", "kiwi", "ananas", "mangue", "avocat", "peche", "abricot", "prune", "melon", "pasteque",
+    "tomate", "carotte", "oignon", "echalote", "ail", "poireau", "courgette", "aubergine", "poivron", "concombre", "salade", "laitue", "roquette", "epinard", "chou", "brocoli", "champignon", "haricots verts", "petits pois",
+    "potiron", "potimarron", "courge", "butternut", "patate douce", "pomme de terre", "navet", "radis", "celeri", "fenouil", "betterave", "persil", "coriandre", "basilic", "menthe", "ciboulette", "gingembre", "legume", "fruit",
+    "apfel", "birne", "zwiebel", "kartoffel", "tomaten", "gurke", "paprika rot"]],
+];
+export function rayonOf(name) {
+  const n = " " + normTxt(name) + " ";
+  if (/^ (huile|vinaigre|ol |essig)/.test(n)) return "Sauces, épices & huiles";
+  for (const [r, kws] of RAYON_KW) if (kws.some((k) => n.includes(" " + k) || n.includes(k + " ") || n.includes(" " + k + "s "))) return r;
+  return "Autres courses";
+}

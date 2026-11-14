@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.15.0";
+const APP_VERSION = "2.16.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -1690,6 +1690,7 @@ function viewMenu() {
 // ---- Courses à états + rangement ----
 const shopState = (it) => it.state || (it.checked ? "bought" : "todo");
 function viewCourses() {
+  if (ui.shopSort == null) { try { ui.shopSort = localStorage.getItem("plk-shopsort") || "rayon"; } catch { ui.shopSort = "rayon"; } }
   const items = shoppingItems();
   const todo = items.filter((it) => shopState(it) === "todo");
   const bought = items.filter((it) => shopState(it) === "bought");
@@ -1703,8 +1704,18 @@ function viewCourses() {
       </button>
       <button class="sc-x" data-act="shop-cancel" data-id="${it.id}" aria-label="Annuler ${esc(it.label)}">×</button>
     </div>`;
-  const groups = (list) => [...CATS.map((c) => ({ title: c.name, id: c.id })), { title: "Autres", id: "manual" }]
-    .map((g) => ({ ...g, rows: list.filter((it) => it.categoryId === g.id).sort((a, b) => a.label.localeCompare(b.label, "fr")) }))
+  // Tri par rayon (ordre d'un magasin) pour l'alimentaire, puis les autres catégories (hygiène, chat…).
+  const byRayon = ui.shopSort !== "cat";
+  const keyOf = (it) => {
+    if (!byRayon) return it.categoryId || "manual";
+    if (it.product && it.categoryId && it.categoryId !== "alim") return "c:" + it.categoryId;
+    return "r:" + E.rayonOf(it.label);
+  };
+  const groupDefs = byRayon
+    ? [...E.RAYONS.filter((r) => r !== "Autres courses").map((r) => ({ title: r, id: "r:" + r })), ...CATS.filter((c) => c.id !== "alim").map((c) => ({ title: c.name, id: "c:" + c.id })), { title: "Autres courses", id: "r:Autres courses" }]
+    : [...CATS.map((c) => ({ title: c.name, id: c.id })), { title: "Autres", id: "manual" }];
+  const groups = (list) => groupDefs
+    .map((g) => ({ ...g, rows: list.filter((it) => keyOf(it) === g.id).sort((a, b) => a.label.localeCompare(b.label, "fr")) }))
     .filter((g) => g.rows.length)
     .map((g) => `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">${g.title}</h2><div class="card list">${g.rows.map(row).join("")}</div></section>`).join("");
   let body;
@@ -1719,6 +1730,7 @@ function viewCourses() {
       <button class="icon-btn" data-act="shop-share" aria-label="Partager la liste">${I.share(20)}</button></div>
     <a class="out-btn" href="#/ajouter" data-act="addmode" data-v="ticket" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ranger les courses avec le ticket de caisse</a>
     <div class="seg" role="group">${tabBtn("todo", "À acheter", todo.length)}${tabBtn("bought", "Acheté", bought.length)}${tabBtn("hist", "Historique", 0)}</div>
+    ${tab !== "hist" ? `<div class="chips" style="gap:6px"><span class="s">Trier :</span><button class="chip sm" data-act="shopsort" data-v="rayon" aria-pressed="${byRayon}">Par rayon</button><button class="chip sm" data-act="shopsort" data-v="cat" aria-pressed="${!byRayon}">Par catégorie</button></div>` : ""}
     ${tab === "todo" ? `<form id="shop-add" class="search" style="padding-right:6px"><label class="sr" for="shop-new">Ajouter un article</label>
       <input id="shop-new" placeholder="Ajouter un article…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
       <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>` : ""}
@@ -2541,6 +2553,7 @@ app.addEventListener("click", (e) => {
       showToast(`${plural(n, "besoin ajouté", "besoins ajoutés")} aux courses`); go("#/courses"); break;
     }
     case "shoptab": ui.shopTab = v; render(); break;
+    case "shopsort": ui.shopSort = v; try { localStorage.setItem("plk-shopsort", v); } catch {} render(); break;
     case "shop-cancel": {
       const it = shoppingItems().find((x) => x.id === id); if (!it) break;
       store.setShopping(id, { state: "cancelled", checked: false, forced: false, doneAt: Date.now(), doneBy: me(), label: it.label, ...(it.product ? { productId: it.product.id, doneQty: qty(it.product) } : {}) });
