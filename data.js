@@ -85,7 +85,7 @@ function demoStore() {
       const i = db.products.findIndex((p) => p.id === id);
       if (i === -1) db.products.push({ ...doc, id }); else db.products[i] = { ...doc, id };
     }
-    db.ops.push(clean({ id: op.id, type: op.type, label: op.label, by: op.by, at: Date.now(), lines: recorded, compensates: op.compensates || null }));
+    db.ops.push(clean({ id: op.id, type: op.type, label: op.label, by: op.by, at: Date.now(), lines: recorded, compensates: op.compensates || null, extra: op.extra || null }));
     if (orig) orig.compensatedBy = op.id;
     save();
     return { status: "ok", recorded };
@@ -190,7 +190,7 @@ async function firebaseStore() {
         const { id: _drop, createdAt: _c, updatedAt: _u, ...rest } = docData;
         tx.set(pRef(id), { ...clean(rest), lastOp: op.id, updatedAt: fs.serverTimestamp(), ...(products[id] ? {} : { createdAt: fs.serverTimestamp() }) }, { merge: true });
       }
-      tx.set(opRef, { ...clean({ type: op.type, label: op.label || "", by: op.by || "", lines: recorded, compensates: op.compensates || null }), at: fs.serverTimestamp() });
+      tx.set(opRef, { ...clean({ type: op.type, label: op.label || "", by: op.by || "", lines: recorded, compensates: op.compensates || null, extra: op.extra || null }), at: fs.serverTimestamp() });
       if (origRef) tx.update(origRef, { compensatedBy: op.id });
       return { status: "ok", recorded };
     });

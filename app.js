@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.7.4";
+const APP_VERSION = "2.8.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -416,7 +416,7 @@ function homeBody() {
     <span class="grow"><span class="t">Liste de courses</span><span class="s">${nShop ? plural(nShop, "article à acheter", "articles à acheter") : "Rien à acheter pour l’instant"}</span></span>
     ${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}
   </a>`;
-  const wk = purchases.filter((pu) => pu.date && weekStart(pu.date) === weekStart(E.todayIso())).reduce((n, pu) => n + Number(pu.total || 0), 0);
+  const wk = purchases.filter((pu) => pu.kind !== "waste" && pu.date && weekStart(pu.date) === weekStart(E.todayIso())).reduce((n, pu) => n + Number(pu.total || 0), 0);
   body += `<a class="card shop-entry" href="#/budget">
     <span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3M15 13h2"/>', 22)}</span>
     <span class="grow"><span class="t">Budget</span><span class="s">${purchases.length ? `Cette semaine : ${euro(wk)}` : "Ajoutez un ticket de caisse pour suivre vos dépenses"}</span></span>
@@ -562,6 +562,7 @@ function viewForm(r) {
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="chip sm" data-act="lot-transfer" data-v="${l.id}">Transférer</button>
             <button class="chip sm" data-act="lot-correct" data-v="${l.id}">Corriger</button>
+            <button class="chip sm" data-act="lot-waste" data-v="${l.id}" style="color:var(--warn);border-color:var(--warn)">Jeté</button>
           </div></div>`).join("") : `<p class="empty-state">Aucun lot : produit épuisé.</p>`}
         <button class="chip" data-act="lot-add">+ Ajouter un lot</button>
       </section>`;
@@ -637,7 +638,7 @@ function lotSheetHtml(p) {
 function viewAlertes() {
   const live = products.filter((p) => qty(p) > 0 && p.expiry);
   const groups = [
-    { title: "Périmé", rows: live.filter((p) => daysUntil(p.expiry) < 0), act: "all", label: "Jeté" },
+    { title: "Périmé", rows: live.filter((p) => daysUntil(p.expiry) < 0), act: "waste", label: "Jeté" },
     { title: "Dans les 7 jours", rows: live.filter((p) => { const d = daysUntil(p.expiry); return d >= 0 && d <= 7; }), act: "dec", label: "Consommé" },
     { title: "Ce mois-ci", rows: live.filter((p) => { const d = daysUntil(p.expiry); return d > 7 && d <= 30; }), act: "dec", label: "Consommé" },
   ];
@@ -1916,6 +1917,23 @@ async function ticketGo() {
   finally { ui.busy = false; render(); }
 }
 
+// ───────────────────────── Gaspillage ─────────────────────────
+// « Jeté » : retrait du stock noté comme gaspillage, avec sa valeur (dernier prix connu).
+async function wasteProduct(p, { lotId = null, amount = null } = {}) {
+  if (!canWrite()) return;
+  if (E.isStatusMode(p)) { await op("status", `${p.name} · jeté`, [{ kind: "status", productId: p.id, status: "epuise" }]); return; }
+  const q = amount != null ? amount : qty(p);
+  if (!(q > 0)) return;
+  const value = p.lastPrice ? Math.round(p.lastPrice * q * 100) / 100 : null;
+  const id = newOpId();
+  try {
+    await store.runOp({ id, type: "waste", label: `Jeté · ${p.name} (${fmtQ(q)} ${p.unit || ""})`, by: me(), lines: [{ kind: "remove", productId: p.id, amount: q, ...(lotId ? { lotId } : {}) }], extra: { value } });
+    store.addPurchase({ kind: "waste", date: E.todayIso(), total: value || 0, valueKnown: value != null, opId: id, items: [{ label: p.name, qty: q, unit: p.unit || "", price: value || 0, productId: p.id, categoryId: p.categoryId }], by: me(), at: Date.now() }).catch(() => {});
+    showToast(`${p.name} noté comme jeté${value != null ? ` · ${euro(value)} perdus` : ""}`, () => undoOp(id));
+  } catch (e) { showToast(e?.message || "Opération impossible"); }
+  render();
+}
+
 // ───────────────────────── Budget ─────────────────────────
 const CAT_NAMES = { alim: "Alimentaire", hyg: "Hygiène", pharma: "Pharmacie", chat: "Chat", autre: "Autre" };
 const CAT_COLORS = { alim: "var(--cat-alim)", hyg: "var(--cat-hyg)", pharma: "var(--cat-pharma)", chat: "var(--cat-chat)", autre: "var(--muted-2)" };
@@ -1930,21 +1948,43 @@ function purchaseSplit(pu) {
   return out;
 }
 function viewBudget() {
-  const list = [...purchases].filter((p) => p.date).sort((a, b) => (b.date + (b.at || 0)).localeCompare(a.date + (a.at || 0)));
+  const weeksN = ui.budWeeks || 8;
+  const undone = new Set(ops.filter((o) => o.compensatedBy).map((o) => o.id));
+  const all = [...purchases].filter((p) => p.date).sort((a, b) => (b.date + (b.at || 0)).localeCompare(a.date + (a.at || 0)));
+  const list = all.filter((p) => p.kind !== "waste");
+  const wastes = all.filter((p) => p.kind === "waste" && !undone.has(p.opId));
   const thisWeek = weekStart(E.todayIso());
   const weeks = new Map();
   for (const pu of list) { const w = weekStart(pu.date); weeks.set(w, (weeks.get(w) || 0) + Number(pu.total || 0)); }
-  const last8 = Array.from({ length: 8 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 7 * (7 - i)); const w = weekStart(localDate(d)); return { w, v: weeks.get(w) || 0 }; });
-  const max = Math.max(1, ...last8.map((x) => x.v));
-  const active = last8.filter((x) => x.v > 0);
-  const avgWeek = active.length ? active.reduce((n, x) => n + x.v, 0) / active.length : 0;
-  const recent = list.filter((pu) => E.daysBetween(pu.date) >= -56);
-  const avgBasket = recent.length ? recent.reduce((n, p) => n + Number(p.total || 0), 0) / recent.length : 0;
+  const inPeriod = (pu) => E.daysBetween(pu.date) >= -(weeksN * 7);
+  // Graphique : par semaine jusqu'à 3 mois, par mois au-delà.
+  const monthly = weeksN > 13;
+  const MONTHS = ["janv", "févr", "mars", "avr", "mai", "juin", "juil", "août", "sept", "oct", "nov", "déc"];
+  let bars;
+  if (!monthly) bars = Array.from({ length: weeksN }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 7 * (weeksN - 1 - i)); const w = weekStart(localDate(d)); return { label: `${w.slice(8, 10)}/${w.slice(5, 7)}`, v: weeks.get(w) || 0, cur: w === thisWeek }; });
+  else {
+    const nM = Math.round(weeksN / 4.33);
+    bars = Array.from({ length: nM }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (nM - 1 - i)); const key = localDate(d).slice(0, 7); return { label: MONTHS[d.getMonth()], v: list.filter((pu) => pu.date.slice(0, 7) === key).reduce((n, pu) => n + Number(pu.total || 0), 0), cur: i === nM - 1 }; });
+  }
+  const max = Math.max(1, ...bars.map((x) => x.v));
+  const weekVals = Array.from({ length: weeksN }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 7 * i); return weeks.get(weekStart(localDate(d))) || 0; });
+  const active = weekVals.filter((v) => v > 0);
+  const avgWeek = active.length ? active.reduce((n, v) => n + v, 0) / active.length : 0;
+  const recent = list.filter(inPeriod);
+  const totalPeriod = recent.reduce((n, p) => n + Number(p.total || 0), 0);
+  const avgBasket = recent.length ? totalPeriod / recent.length : 0;
   const split = {};
   for (const pu of recent) for (const [c, v] of Object.entries(purchaseSplit(pu))) split[c] = (split[c] || 0) + v;
   const splitTotal = Object.values(split).reduce((n, v) => n + v, 0) || 1;
   const byStore = {};
   for (const pu of recent) { const s = pu.store || "Magasin"; byStore[s] = byStore[s] || { n: 0, v: 0 }; byStore[s].n += 1; byStore[s].v += Number(pu.total || 0); }
+  const wasteP = wastes.filter(inPeriod);
+  const wasteTotal = wasteP.reduce((n, w) => n + Number(w.total || 0), 0);
+  const wasteUnknown = wasteP.filter((w) => !w.valueKnown).length;
+  const wasteBy = {};
+  for (const w of wasteP) for (const it of w.items || []) { const k = it.label; wasteBy[k] = wasteBy[k] || { n: 0, v: 0, q: 0, unit: it.unit }; wasteBy[k].n += 1; wasteBy[k].v += Number(it.price || 0); wasteBy[k].q += Number(it.qty || 0); }
+  const PERIODS = [[4, "4 sem."], [8, "8 sem."], [13, "3 mois"], [26, "6 mois"], [52, "1 an"]];
+  const periodLabel = (PERIODS.find(([n]) => n === weeksN) || [0, `${weeksN} sem.`])[1];
   // Estimation de la liste de courses à partir des prix habituels.
   const todo = shoppingItems().filter((it) => it.state === "todo");
   let est = 0, known = 0;
@@ -1953,21 +1993,28 @@ function viewBudget() {
   return `<main class="screen">${offlineBanner()}
     <div class="top"><div class="grow"><h1>Budget</h1><span class="sub">D’après vos tickets et dépenses saisies</span></div>
       <a class="icon-btn" href="#/ajouter" data-act="addmode" data-v="ticket" aria-label="Ajouter un ticket">${I.plus(20)}</a></div>
+    <div class="seg" role="group" aria-label="Période">${PERIODS.map(([n, l]) => `<button data-act="bud-period" data-v="${n}" aria-pressed="${weeksN === n}" style="font-size:13px;height:38px">${l}</button>`).join("")}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="card" style="padding:12px 14px"><span class="eyebrow">Cette semaine</span><strong class="h" style="font-size:24px;display:block">${euro(weeks.get(thisWeek) || 0)}</strong></div>
-      <div class="card" style="padding:12px 14px"><span class="eyebrow">Moyenne / semaine</span><strong class="h" style="font-size:24px;display:block">${euro(avgWeek)}</strong><span class="s">${active.length ? `sur ${plural(active.length, "semaine", "semaines")}` : "pas encore de données"}</span></div>
-      <div class="card" style="padding:12px 14px"><span class="eyebrow">Panier moyen</span><strong class="h" style="font-size:24px;display:block">${euro(avgBasket)}</strong><span class="s">${plural(recent.length, "passage", "passages")} en 8 sem.</span></div>
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Total · ${periodLabel}</span><strong class="h" style="font-size:24px;display:block">${euro(totalPeriod)}</strong><span class="s">moy. ${euro(avgWeek)} / semaine</span></div>
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Panier moyen</span><strong class="h" style="font-size:24px;display:block">${euro(avgBasket)}</strong><span class="s">${plural(recent.length, "passage", "passages")} · ${periodLabel}</span></div>
       <div class="card" style="padding:12px 14px"><span class="eyebrow">Liste de courses</span><strong class="h" style="font-size:24px;display:block">${known ? "≈ " + euro(est) : "—"}</strong><span class="s">${todo.length ? `prix connu pour ${known}/${todo.length} articles` : "liste vide"}</span></div>
     </div>
-    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">8 dernières semaines</span>
-      <div style="display:flex;align-items:flex-end;gap:6px;height:110px">${last8.map((x) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">
-        <span class="s" style="font-size:10px">${x.v ? Math.round(x.v) : ""}</span>
-        <div style="width:100%;height:${Math.max(2, Math.round((x.v / max) * 80))}px;border-radius:6px 6px 2px 2px;background:${x.w === thisWeek ? "var(--primary)" : "var(--border-2)"}"></div>
-        <span class="s" style="font-size:10px">${x.w.slice(8, 10)}/${x.w.slice(5, 7)}</span></div>`).join("")}</div></section>
-    ${Object.keys(split).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Répartition (8 sem.)</span>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">${monthly ? "Par mois" : "Par semaine"} · ${periodLabel}</span>
+      <div style="display:flex;align-items:flex-end;gap:${bars.length > 10 ? 3 : 6}px;height:110px">${bars.map((x, i) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;min-width:0">
+        <span class="s" style="font-size:10px">${x.v && bars.length <= 13 ? Math.round(x.v) : ""}</span>
+        <div style="width:100%;height:${Math.max(2, Math.round((x.v / max) * 80))}px;border-radius:5px 5px 2px 2px;background:${x.cur ? "var(--primary)" : "var(--border-2)"}"></div>
+        <span class="s" style="font-size:${bars.length > 10 ? 8 : 10}px">${bars.length > 8 && !monthly && i % 2 ? "" : x.label}</span></div>`).join("")}</div></section>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px;${wasteTotal ? "border-color:var(--warn)" : ""}">
+      <div class="row-between"><span class="eyebrow">Gaspillage · ${periodLabel}</span><strong class="h" style="font-size:20px;${wasteTotal ? "color:var(--warn)" : ""}">${euro(wasteTotal)}</strong></div>
+      ${wasteP.length ? `<span class="s">${plural(wasteP.length, "produit jeté", "produits jetés")}${totalPeriod ? ` · ${Math.round((wasteTotal / totalPeriod) * 100)} % des dépenses` : ""}${wasteUnknown ? ` · ${wasteUnknown} sans prix connu` : ""}</span>
+        ${Object.entries(wasteBy).sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([k, o]) => `<div class="row-between"><span>${esc(k)}</span><span class="s">${o.n > 1 ? `${o.n} fois · ` : ""}${fmtQ(o.q)} ${esc(o.unit || "")} · ${o.v ? euro(o.v) : "prix inconnu"}</span></div>`).join("")}`
+      : `<span class="s">Rien de jeté sur la période. Pour noter un produit jeté : bouton « Jeté » dans Alertes (produits périmés) ou sur un lot dans la fiche produit.</span>`}
+    </section>
+    ${Object.keys(split).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Répartition · ${periodLabel}</span>
       <div style="display:flex;height:14px;border-radius:7px;overflow:hidden">${Object.entries(split).filter(([, v]) => v > 0).map(([c, v]) => `<div style="width:${(v / splitTotal) * 100}%;background:${CAT_COLORS[c] || "var(--muted-2)"}"></div>`).join("")}</div>
       ${Object.entries(split).sort((a, b) => b[1] - a[1]).map(([c, v]) => `<div class="row-between"><span><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${CAT_COLORS[c] || "var(--muted-2)"};margin-right:6px"></span>${CAT_NAMES[c] || c}</span><span class="s">${euro(v)} · ${Math.round((v / splitTotal) * 100)} %</span></div>`).join("")}</section>` : ""}
-    ${Object.keys(byStore).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Par magasin (8 sem.)</span>
+    ${Object.keys(byStore).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Par magasin · ${periodLabel}</span>
       ${Object.entries(byStore).sort((a, b) => b[1].v - a[1].v).map(([s, o]) => `<div class="row-between"><span>${esc(s)}</span><span class="s">${euro(o.v)} · ${plural(o.n, "passage", "passages")} · moy. ${euro(o.v / o.n)}</span></div>`).join("")}</section>` : ""}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <a class="cta" href="#/ajouter" data-act="addmode" data-v="ticket" style="height:50px;font-size:15px">Ticket de caisse</a>
@@ -2186,6 +2233,9 @@ app.addEventListener("click", (e) => {
     case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; applyEstimate(l); render(); } break; }
     case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); l.estimated = false; render(); } break; }
     case "tk-go": ticketGo(); break;
+    case "waste": { const p = find(id); if (p) wasteProduct(p, {}); break; }
+    case "lot-waste": { const p = ui.form && find(ui.form.id); const lot = p && E.lotsOf(p).find((l) => l.id === v); if (lot) wasteProduct(p, { lotId: lot.id, amount: Number(lot.qty) }); break; }
+    case "bud-period": ui.budWeeks = Number(v); render(); break;
     case "tk-del": {
       const i = Number(t.dataset.i);
       if (ui.tk?.lines?.[i]) {
