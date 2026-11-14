@@ -51,7 +51,7 @@ function segment(src) {
         priced = true; continue;
       }
       // « orange à banane » : la dictée a entendu « à » au lieu de « et une » (sauf « pâte à tartiner », « crème à fouetter »…)
-      if (/^(à|a)$/i.test(t) && named && nt && !/^\d/.test(nt) && !QTY_START.test(nt) && !/^(tartiner|fouetter|pizza|gratin|cuire|cuisson|la|l'|base|raclette|soupe|risotto|sushi|r[aâ]per|poêler|boire|croquer|th[eé]|caf[eé])/i.test(nt)) { flush(); continue; }
+      if (/^(à|a)$/i.test(t) && named && nt && !/^\d/.test(nt) && !QTY_START.test(nt) && !/^(tartiner|fouetter|pizza|gratin|cuire|cuisson|la|l'|base|raclette|soupe|risotto|sushi|r[aâ]per|poêler|boire|croquer|th[eé]|caf[eé])/i.test(nt)) { flush(); cur.push("un"); continue; }
       if (isNum && named && !LINK.test(prev)) flush();
       else if (isNum && named && /^pour$/i.test(prev)) { cur.pop(); flush(); }
       else if (priced && !isNum) flush();
@@ -81,7 +81,18 @@ export function parsePhrase(text) {
   let total = null;
   const tm = src.match(/\b(?:total|en tout|au total|j ?ai pay[eé]|ça fait|ca fait)\s*(?:de|:)?\s*([^,;]+)/i);
   if (tm) { const p = extractPrice(tm[1] + (/(€|euro)/i.test(tm[1]) ? "" : " euros")); if (p.price != null) { total = p.price; src = src.replace(tm[0], ", "); } }
-  const chunks = src.split(/\s*(?:,(?!\d)|;|\bet\b(?!\s+demi)|\bpuis\b|\bplus\b|\+|\bavec\b)\s*/i).map((c) => c.trim()).filter(Boolean);
+  const chunks0 = src.split(/\s*(?:,(?!\d)|;|\bet\b(?!\s+demi)|\bpuis\b|\bplus\b|\+|\bavec\b)\s*/i).map((c) => c.trim()).filter(Boolean);
+  // La dictée met parfois une virgule au milieu d'un article : « 200 g, emmental râpé », « 1 kg de riz, basmati à 2,49 € »
+  const hasQty = (c) => /^(\d|un\b|une\b|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|douze|des\b|du\b|de la\b|demi|quelques|plusieurs)/i.test(c);
+  const onlyQty = (c) => /^(\d+(?:[.,]\d+)?|une?|deux|trois|quatre|cinq|six|dix|douze)\s*(g|kg|l|cl|ml|kilos?|grammes?|litres?|paquets?|bo[iî]tes?|sachets?|bouteilles?)?$/i.test(c.trim());
+  const hasPrice = (c) => /(\d|\b(?:un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\b)\s*(€|euros?|centimes?)/i.test(c);
+  const chunks = [];
+  for (const c of chunks0) {
+    const prev = chunks[chunks.length - 1];
+    if (prev && onlyQty(prev)) { chunks[chunks.length - 1] = `${prev} ${c}`; continue; }
+    if (prev && !hasQty(c) && hasPrice(c) && hasQty(prev) && !hasPrice(prev)) { chunks[chunks.length - 1] = `${prev} ${c}`; continue; }
+    chunks.push(c);
+  }
   const items = [];
   for (let c of chunks) {
     const { price, rest } = extractPrice(c);

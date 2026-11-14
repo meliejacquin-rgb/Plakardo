@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.6";
+const APP_VERSION = "2.6.7";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -919,7 +919,7 @@ function viewAjouter() {
         ${ui.micErr ? `<span class="s">Code : ${esc(ui.micErr)}</span>` : ""}
       </div>
       <textarea id="qa-text" class="input" data-qatext rows="3" lang="fr" autocapitalize="sentences" autocorrect="on" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
-      <button class="cta" data-act="qa-go" ${qa.text.trim() ? "" : "disabled"}>${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
+      <button class="cta" data-act="qa-go">${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
       <span class="add-sub">Les prix sont facultatifs. Sans prix, le budget utilise les derniers prix connus. Les dates de péremption sont estimées automatiquement.</span>`;
   } else {
     panel = `<div class="add-head">${IC.barcode(30)}<span><span class="add-title">Scannez les codes-barres</span><span class="add-sub">Produit par produit, ou en rafale pour un sac entier.</span></span></div>
@@ -988,6 +988,7 @@ function toggleMic() {
   } catch { ui.micHelp = true; render(); }
 }
 async function quickAddGo() {
+  if (!(ui.qa.text || "").trim()) { showToast("Dictez ou tapez d’abord vos produits"); render(); return; }
   const r = parsePhrase(ui.qa.text);
   if (!r.items.length) { showToast("Je n’ai reconnu aucun produit : essayez « deux yaourts, du lait »"); render(); return; }
   if (ui.qa.target === "courses") {
@@ -1789,7 +1790,7 @@ function viewTicket() {
         <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive, facture)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>
         <span class="s">Autre possibilité : ouvrez la photo du ticket dans Photos, touchez l’icône Texte en direct › Tout sélectionner › Copier, puis collez ici.</span>
       </section>
-    </main><div class="cta-bar"><button class="cta" data-act="tk-read" ${t.text.trim() ? "" : "disabled"}>Lire le ticket</button></div>`;
+    </main><div class="cta-bar"><button class="cta" data-act="tk-read">Lire le ticket</button></div>`;
   }
   const inc = t.lines.filter((l) => l.include);
   const voice = t.source === "voice";
@@ -2141,9 +2142,9 @@ app.addEventListener("click", (e) => {
     case "addmode": ui.addMode = v; render(); break;
     case "qa-target": ui.qa.target = v; render(); break;
     case "mic": if (ui.micHelp && !ui.listening) { keyboardDictation(); } else toggleMic(); break;
-    case "qa-go": quickAddGo(); break;
+    case "qa-go": { const el = document.getElementById("qa-text"); if (el) ui.qa.text = el.value; quickAddGo(); break; }
     case "tk-new": ui.tk = { step: "text", text: "" }; break;
-    case "tk-read": readTicket(); break;
+    case "tk-read": { const el = document.getElementById("tk-text"); if (el) ui.tk = { ...(ui.tk || {}), step: "text", text: el.value }; if (!(ui.tk?.text || "").trim()) { showToast("Scannez ou collez d’abord le texte du ticket"); render(); break; } readTicket(); break; }
     case "tk-back": if (ui.tk?.source === "voice") { ui.tk = null; go("#/ajouter"); } else { ui.tk = { step: "text", text: ui.tk?.text || "" }; render(); } break;
     case "tk-inc": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.include = !l.include; render(); } break; }
     case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; applyEstimate(l); render(); } break; }
@@ -2220,8 +2221,8 @@ app.addEventListener("input", (e) => {
   }
   if (t.matches("[data-cookq]")) { const c = ui.cook[Number(t.dataset.cookq)]; if (c) c.qty = parseQ(t.value); return; }
   if (t.matches("[data-recpaste]")) { ui.recPaste = t.value; return; }
-  if (t.matches("[data-qatext]")) { const had = !!ui.qa.text.trim(); ui.qa.text = t.value; if (had !== !!t.value.trim()) render(); return; }
-  if (t.matches("[data-tktext]")) { const had = !!(ui.tk?.text || "").trim(); ui.tk = { ...(ui.tk || {}), step: "text", text: t.value }; if (had !== !!t.value.trim()) render(); return; }
+  if (t.matches("[data-qatext]")) { ui.qa.text = t.value; return; }
+  if (t.matches("[data-tktext]")) { ui.tk = { ...(ui.tk || {}), step: "text", text: t.value }; return; }
   if (t.matches("[data-tkp]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkp)]; if (l) { l.productId = t.value; l.amount = stockAmount(l, find(t.value)); applyEstimate(l); render(); } return; }
   if (t.matches("[data-tkprice]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkprice)]; if (l) l.price = t.value.trim() === "" ? null : parseQ(t.value); return; }
   if (t.matches("[data-tktotal]")) { if (ui.tk) ui.tk.total = t.value.trim() === "" ? null : parseQ(t.value); return; }
