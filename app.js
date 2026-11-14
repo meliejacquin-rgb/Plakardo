@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.7.2";
+const APP_VERSION = "2.7.3";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -904,10 +904,10 @@ function viewAjouter() {
   } else if (mode === "ticket") {
     panel = `<div class="add-head">${IC.ticket(30)}<span><span class="add-title">Importez votre ticket</span><span class="add-sub">Les articles sont identifiés en une seule opération, et le montant va dans le budget.</span></span></div>
       ${ui.ocr ? `<div class="ok-box">${esc(ui.ocr.msg)}</div>` : `
-      <a class="cta" href="#/ticket" data-act="tk-new">Scanner le ticket avec l’iPhone</a>
-      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Prendre le ticket en photo<input type="file" accept="image/*" capture="environment" data-tkimg hidden></label>
+      <label class="cta" style="cursor:pointer">${IC.photo(20)} Prendre le ticket en photo<input type="file" accept="image/*" capture="environment" data-tkimg hidden></label>
+      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Choisir une photo (1 ou 2 pour un long ticket)<input type="file" accept="image/*" multiple data-tkimg hidden></label>
       <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>`}
-      <span class="add-sub">« Scanner avec l’iPhone » est le plus fiable. La photo est lue par Plakardo : vérifiez les montants.</span>`;
+      <span class="add-sub">Astuce : ticket bien à plat, en pleine lumière, cadré au plus près. Vérifiez ensuite les montants.</span>`;
   } else if (mode === "mic") {
     panel = `<div class="add-head">${IC.mic(30)}<span><span class="add-title">Dites vos courses</span><span class="add-sub">« Chez Lidl : deux yaourts, un kilo de pommes 2 euros 50, du poulet, total 12 euros »</span></span></div>
       <div class="seg" role="group" style="grid-auto-columns:1fr"><button data-act="qa-target" data-v="stock" aria-pressed="${qa.target === "stock"}">Ranger dans le stock</button><button data-act="qa-target" data-v="courses" aria-pressed="${qa.target === "courses"}">Ajouter aux courses</button></div>
@@ -1500,7 +1500,7 @@ function viewCourses() {
     <div class="top"><div class="grow"><h1>Courses</h1><span class="sub">Partagée avec le foyer</span></div>
       <a class="icon-btn" href="#/budget" aria-label="Budget">${svg('<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3M15 13h2"/>', 20)}</a>
       <button class="icon-btn" data-act="shop-share" aria-label="Partager la liste">${I.share(20)}</button></div>
-    <a class="out-btn" href="#/ticket" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ranger les courses avec le ticket de caisse</a>
+    <a class="out-btn" href="#/ajouter" data-act="addmode" data-v="ticket" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ranger les courses avec le ticket de caisse</a>
     <div class="seg" role="group">${tabBtn("todo", "À acheter", todo.length)}${tabBtn("bought", "Acheté", bought.length)}${tabBtn("hist", "Historique", 0)}</div>
     ${tab === "todo" ? `<form id="shop-add" class="search" style="padding-right:6px"><label class="sr" for="shop-new">Ajouter un article</label>
       <input id="shop-new" placeholder="Ajouter un article…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
@@ -1937,7 +1937,7 @@ function viewBudget() {
   const m = ui.budgetManual;
   return `<main class="screen">${offlineBanner()}
     <div class="top"><div class="grow"><h1>Budget</h1><span class="sub">D’après vos tickets et dépenses saisies</span></div>
-      <a class="icon-btn" href="#/ticket" aria-label="Ajouter un ticket">${I.plus(20)}</a></div>
+      <a class="icon-btn" href="#/ajouter" data-act="addmode" data-v="ticket" aria-label="Ajouter un ticket">${I.plus(20)}</a></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="card" style="padding:12px 14px"><span class="eyebrow">Cette semaine</span><strong class="h" style="font-size:24px;display:block">${euro(weeks.get(thisWeek) || 0)}</strong></div>
       <div class="card" style="padding:12px 14px"><span class="eyebrow">Moyenne / semaine</span><strong class="h" style="font-size:24px;display:block">${euro(avgWeek)}</strong><span class="s">${active.length ? `sur ${plural(active.length, "semaine", "semaines")}` : "pas encore de données"}</span></div>
@@ -1955,7 +1955,7 @@ function viewBudget() {
     ${Object.keys(byStore).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Par magasin (8 sem.)</span>
       ${Object.entries(byStore).sort((a, b) => b[1].v - a[1].v).map(([s, o]) => `<div class="row-between"><span>${esc(s)}</span><span class="s">${euro(o.v)} · ${plural(o.n, "passage", "passages")} · moy. ${euro(o.v / o.n)}</span></div>`).join("")}</section>` : ""}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <a class="cta" href="#/ticket" style="height:50px;font-size:15px">Ticket de caisse</a>
+      <a class="cta" href="#/ajouter" data-act="addmode" data-v="ticket" style="height:50px;font-size:15px">Ticket de caisse</a>
       <button class="out-btn" style="height:50px" data-act="bud-manual">Saisir une dépense</button></div>
     ${m ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Dépense sans ticket</span>
       <input class="input sm" data-bm="store" value="${esc(m.store)}" placeholder="Magasin">
