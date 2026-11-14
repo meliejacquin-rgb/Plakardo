@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.2";
+const APP_VERSION = "2.6.3";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -888,7 +888,7 @@ const IC = {
 };
 const SR = typeof window !== "undefined" ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 function viewAjouter() {
-  const mode = ui.addMode || "ticket";
+  const mode = ["ticket", "mic", "barcode"].includes(ui.addMode) ? ui.addMode : "ticket";
   const tile = (k, label) => `<button class="add-tile" data-act="addmode" data-v="${k}" aria-pressed="${mode === k}">${IC[k](26)}<span>${label}</span></button>`;
   const q = ui.addSearch.trim().toLowerCase();
   const hits = q ? products.filter((p) => `${p.name} ${p.detail || ""}`.toLowerCase().includes(q)).sort(byName).slice(0, 8) : [];
@@ -938,7 +938,7 @@ function viewAjouter() {
   return `<main class="screen">${offlineBanner()}
     <div class="top"><div class="grow"><h1 style="font-size:28px">Ajouter des produits</h1></div>
       <a class="icon-btn" href="#/ajout" aria-label="Nouveau produit (fiche complète)">${I.plus(20)}</a></div>
-    <div class="add-tiles">${tile("photo", "Photo")}${tile("ticket", "Ticket")}${tile("mic", "Voix")}${tile("barcode", "Code-barres")}</div>
+    <div class="add-tiles">${tile("ticket", "Ticket")}${tile("mic", "Voix")}${tile("barcode", "Code-barres")}</div>
     <section class="card add-panel">${panel}
       ${lastAdded.length ? `<div class="add-sep"></div><span class="t" style="font-family:Nunito,sans-serif;font-weight:900">Derniers produits ajoutés</span>
         ${lastAdded.map((x) => `<div class="row-between add-row"><span style="display:flex;align-items:center;gap:10px"><span style="color:var(--mint-ink)">${svg('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>', 22, 2)}</span>${esc(x.name)}</span><span class="s">+${fmtQ(x.q)} ${esc(x.unit || "")}</span></div>`).join("")}` : ""}
