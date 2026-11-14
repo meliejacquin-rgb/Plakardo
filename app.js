@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.9.0";
+const APP_VERSION = "2.10.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1199,6 +1199,7 @@ const hashStr = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.c
 const VIG_COLORS = [["#F6D7C3", "#C2562F"], ["#DDEBD5", "#4E7A3A"], ["#F3E3B5", "#A9781C"], ["#E5DAF0", "#6B4A8E"], ["#D7E8EE", "#2F6E85"], ["#F5D5DC", "#A53D5A"]];
 // Vignette illustrative dessinée par l'app (pas une photo du plat).
 function vignette(r, size = 64) {
+  if (r.image) return `<img src="${esc(r.image)}" width="${size}" height="${size}" alt="" loading="lazy" decoding="async" style="border-radius:${size / 4}px;flex:none;object-fit:cover;background:var(--soft)">`;
   if (r.drawing) return `<img src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.drawing)}" width="${size}" height="${size}" alt="" style="border-radius:${size / 4}px;flex:none;background:var(--soft)">`;
   const h = hashStr(r.title || "");
   const [bg, fg] = VIG_COLORS[h % VIG_COLORS.length];
@@ -1234,13 +1235,17 @@ function R(r) {
 const BOOK_BY_ID = new Map(BOOK.map((r) => [r.id, r]));
 function findRecipe(id) {
   if (recAlias[id]) id = recAlias[id];
-  return R(recipes.find((r) => r.id === id) || BOOK_BY_ID.get(id) || (loadParsed()?.recipes || []).find((r) => r.id === id));
+  const saved = recipes.find((r) => r.id === id);
+  // Recette du livre : toujours la version à jour (photo, corrections), même si elle est en favori.
+  if (saved && saved.builtin && BOOK_BY_ID.get(id)) return R(BOOK_BY_ID.get(id));
+  return R(saved || BOOK_BY_ID.get(id) || (loadParsed()?.recipes || []).find((r) => r.id === id));
 }
 const listTxt = (a) => (a || []).join(", ");
 const splitList = (s) => String(s || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
 const tagPill = (t) => `<span class="pill" style="${t.kind === "prio" ? "background:var(--mint-soft);color:var(--mint-ink)" : t.kind === "ok" ? "background:var(--mint-soft);color:var(--mint-ink)" : t.kind === "miss" ? "background:var(--blush);color:var(--warn)" : "background:var(--soft);color:var(--muted-2)"}">${esc(t.text)}</span>`;
 
 function recipeCard(r) {
+  if (r && r.builtin && BOOK_BY_ID.get(r.id)) r = BOOK_BY_ID.get(r.id);
   r = R(r);
   const sc = E.scoreRecipe(r, products);
   const fav = recipes.some((x) => x.id === r.id && isFav(x));
@@ -1386,7 +1391,8 @@ function viewRecette(id) {
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"></div>
       <button class="icon-btn" data-act="rec-fav" data-v="${esc(r.id)}" aria-label="${fav ? "Retirer des favoris" : "Ajouter aux favoris"}" aria-pressed="${fav}" style="font-size:20px;color:var(--primary)">${fav ? "★" : "☆"}</button></div>
-    <div style="display:flex;gap:14px;align-items:center">${vignette(r, 84)}<div><h1 style="font-size:24px;line-height:1.15">${esc(r.title)}</h1>
+    ${r.image ? `<img src="${esc(r.image)}" alt="${esc(r.title)}" style="width:100%;aspect-ratio:1/1;max-height:360px;object-fit:cover;border-radius:24px;background:var(--soft)">` : ""}
+    <div style="display:flex;gap:14px;align-items:center">${r.image ? "" : vignette(r, 84)}<div><h1 style="font-size:24px;line-height:1.15">${esc(r.title)}</h1>
       <span class="sub">${esc([r.type, r.theme, r.difficulty].filter(Boolean).join(" · "))}</span></div></div>
     ${r.description ? `<p class="s" style="font-size:15px">${esc(r.description)}</p>` : ""}
     <div class="card" style="padding:10px 14px;display:flex;justify-content:space-around;text-align:center">

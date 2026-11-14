@@ -18,16 +18,19 @@ Omelette jambon fromage | Plat | Français | 5 | 6 | Facile
 > Cuire dans le beurre chaud, ajouter jambon et fromage quand le dessus est encore baveux.
 > Plier et servir.
 
-Pâtes carbonara | Plat | Italien | 10 | 12 | Facile
-- pâtes: 200 g
-- lardons: 125 g
-- oeuf: 2 pièce
-- parmesan: 40 g
-- poivre *
-> Cuire les pâtes dans une grande casserole d’eau salée.
-> Faire dorer les lardons à sec dans une poêle.
-> Mélanger œufs, parmesan et beaucoup de poivre.
-> Égoutter les pâtes en gardant un peu d’eau, mélanger hors du feu avec les lardons et la préparation aux œufs, détendre avec l’eau de cuisson.
+Spaghetti à la carbonara | Plat | Italien | 10 | 15 | Facile
+@id b-pates-carbonara
+@img img/recettes/b-pates-carbonara.webp
+- spaghetti: 200 g
+- lardons: 120 g
+- œuf: 2 pièce
+- parmesan: 50 g
+- sel, poivre *
+> Faire cuire les spaghetti dans une grande casserole d’eau bouillante salée.
+> Faire revenir les lardons dans une poêle sans ajouter de matière grasse.
+> Battre les œufs avec le parmesan râpé et le poivre.
+> Égoutter les pâtes en conservant un peu d’eau de cuisson.
+> Mélanger les pâtes hors du feu avec les lardons et les œufs, puis ajouter un peu d’eau de cuisson pour obtenir une sauce crémeuse.
 
 Pâtes à la sauce tomate | Plat | Italien | 5 | 20 | Facile
 - pâtes: 200 g
@@ -157,16 +160,22 @@ Poulet rôti et pommes de terre | Plat | Français | 10 | 50 | Facile
 > Poser les cuisses dessus, arroser d’huile, saler, poivrer, parsemer d’herbes.
 > Cuire 45 à 50 min à 200 °C.
 
-Poulet à la moutarde | Plat | Français | 5 | 20 | Facile
+Poulet à la moutarde et champignons | Plat | Français | 10 | 25 | Facile
+@id b-poulet-a-la-moutarde
+@img img/recettes/b-poulet-a-la-moutarde.webp
 - poulet: 300 g
+- champignons: 200 g
+- crème fraîche: 100 g
 - moutarde: 2 c. à soupe
-- crème fraîche: 20 cl
+- riz: 140 g
 - oignon: 1 pièce
-- huile: 1 c. à soupe *
+- huile d’olive: 1 c. à soupe *
 - sel, poivre *
-> Dorer le poulet en morceaux et l’oignon dans l’huile.
-> Ajouter crème et moutarde, laisser mijoter 10 min.
-> Servir avec du riz ou des pâtes.
+> Faire cuire le riz dans une casserole d’eau bouillante.
+> Couper le poulet en morceaux et le faire dorer avec l’huile et l’oignon émincé.
+> Ajouter les champignons émincés et laisser cuire 8 minutes.
+> Incorporer la moutarde et la crème fraîche, puis laisser mijoter 10 minutes.
+> Servir le poulet et sa sauce avec le riz.
 
 Fajitas au poulet | Plat | Mexicain | 15 | 15 | Facile
 - tortillas: 4 pièce
@@ -180,18 +189,25 @@ Fajitas au poulet | Plat | Mexicain | 15 | 15 | Facile
 > Les faire sauter 10 min dans l’huile avec les épices.
 > Garnir les tortillas chaudes, ajouter un peu de crème.
 
-Chili con carne | Plat | Mexicain | 15 | 40 | Facile
-- viande hachée: 300 g
-- haricots rouges: 1 boîte
+Chili con carne express | Plat | Mexicain | 15 | 25 | Facile
+@id b-chili-con-carne
+@img img/recettes/b-chili-con-carne.webp
+- bœuf haché: 250 g
+- haricots rouges: 250 g
 - tomates concassées: 400 g
+- maïs: 100 g
 - oignon: 1 pièce
-- poivron: 1 pièce
+- ail: 2 gousse
+- riz: 120 g
 - cumin: 1 c. à café *
-- piment: 1 pincée *
-- sel *
-> Faire revenir oignon, poivron et viande.
-> Ajouter tomates, épices et haricots égouttés.
-> Mijoter 30 min, servir avec du riz.
+- paprika: 1 c. à café *
+- huile d’olive: 1 c. à soupe *
+- sel, poivre *
+> Faire cuire le riz dans une casserole d’eau bouillante.
+> Faire revenir l’oignon émincé et l’ail haché dans l’huile, puis ajouter le bœuf haché.
+> Incorporer le cumin, le paprika et les tomates concassées.
+> Ajouter les haricots rouges égouttés et le maïs, puis laisser mijoter 15 minutes.
+> Servir le chili avec le riz.
 
 Tacos de bœuf | Plat | Mexicain | 15 | 10 | Facile
 - tortillas: 6 pièce
@@ -419,16 +435,24 @@ Dahl de lentilles corail | Plat | Indien | 10 | 25 | Facile
 > Ajouter lentilles rincées, tomates, lait de coco et 30 cl d’eau.
 > Cuire 20 min jusqu’à ce que ce soit fondant, saler.
 
-Curry de pois chiches | Plat | Indien | 10 | 20 | Facile
-- pois chiches: 1 boîte
+Curry de pois chiches et épinards | Plat | Indien | 10 | 20 | Facile
+@id b-curry-de-pois-chiches
+@img img/recettes/b-curry-de-pois-chiches.webp
+- pois chiches: 400 g
 - épinards: 150 g
-- lait de coco: 20 cl
+- lait de coco: 200 ml
+- tomates concassées: 200 g
 - oignon: 1 pièce
+- ail: 2 gousse
+- riz: 120 g
 - curry: 2 c. à café *
-- huile: 1 c. à soupe *
-> Faire revenir l’oignon et le curry.
-> Ajouter pois chiches égouttés et lait de coco, mijoter 10 min.
-> Ajouter les épinards jusqu’à ce qu’ils tombent.
+- huile d’olive: 1 c. à soupe *
+- sel, poivre *
+> Faire cuire le riz dans une casserole d’eau bouillante.
+> Faire revenir l’oignon émincé et l’ail haché dans l’huile avec le curry.
+> Ajouter les tomates concassées, les pois chiches égouttés et le lait de coco.
+> Laisser mijoter 15 minutes, puis incorporer les épinards jusqu’à ce qu’ils soient tendres.
+> Servir le curry accompagné du riz.
 
 Couscous aux légumes | Plat | Moyen-oriental | 15 | 35 | Moyenne
 - semoule: 200 g
@@ -579,15 +603,25 @@ Gaspacho | Entrée | Espagnol | 15 | 0 | Facile
 > Mettre jambon haché et crème dans deux ramequins, casser un œuf dans chacun.
 > Cuire 10 à 12 min au bain-marie au four à 180 °C.
 
-Shakshuka | Plat | Moyen-oriental | 10 | 20 | Facile
-- oeuf: 4 pièce
+Shakshuka aux poivrons et feta | Plat | Méditerranéen | 10 | 25 | Facile
+@id b-shakshuka
+@img img/recettes/b-shakshuka.webp
+- œuf: 4 pièce
 - tomates concassées: 400 g
 - poivron: 1 pièce
 - oignon: 1 pièce
+- feta: 80 g
+- pain: 4 tranche
+- ail: 2 gousse
 - cumin: 1 c. à café *
+- paprika: 1 c. à café *
 - huile d’olive: 1 c. à soupe *
-> Faire revenir oignon et poivron, ajouter tomates et cumin, mijoter 10 min.
-> Creuser des puits, y casser les œufs, couvrir et cuire 6 à 8 min.
+- sel, poivre *
+> Émincer l’oignon et le poivron, puis les faire revenir dans l’huile pendant 5 minutes.
+> Ajouter l’ail haché, le cumin, le paprika et les tomates concassées, puis laisser mijoter 10 minutes.
+> Creuser quatre petits puits dans la sauce et y casser les œufs.
+> Couvrir et poursuivre la cuisson pendant 7 à 10 minutes jusqu’à ce que les blancs soient pris.
+> Parsemer de feta émiettée et servir avec les tranches de pain.
 
 Ratatouille | Plat | Français | 20 | 40 | Facile
 - aubergine: 1 pièce
@@ -611,16 +645,22 @@ Gratin de courgettes | Plat | Français | 15 | 30 | Facile
 > Les mettre dans un plat, couvrir d’œufs et crème battus puis de fromage.
 > Cuire 25 min à 200 °C.
 
-Gratin de chou-fleur | Plat | Français | 15 | 35 | Facile
-- chou-fleur: 1 pièce
-- lait: 50 cl
-- beurre: 40 g
-- farine: 40 g *
-- fromage râpé: 80 g
-- sel, muscade *
-> Cuire les bouquets de chou-fleur 10 min à l’eau.
-> Préparer une béchamel avec beurre, farine et lait.
-> Napper le chou-fleur, couvrir de fromage, gratiner 20 min.
+Gratin de chou-fleur au jambon | Plat | Français | 15 | 25 | Facile
+@id b-gratin-de-chou-fleur
+@img img/recettes/b-gratin-de-chou-fleur.webp
+- chou-fleur: 500 g
+- jambon blanc: 3 tranche
+- lait: 300 ml
+- farine: 25 g *
+- beurre: 25 g
+- emmental râpé: 80 g
+- muscade: 1 pincée *
+- sel, poivre *
+> Préchauffer le four à 200 °C et cuire les fleurettes de chou-fleur dans l’eau bouillante pendant 10 minutes.
+> Faire fondre le beurre dans une casserole, ajouter la farine puis incorporer progressivement le lait pour obtenir une béchamel.
+> Assaisonner la béchamel avec le sel, le poivre et la muscade.
+> Disposer le chou-fleur égoutté et le jambon coupé en morceaux dans un plat à gratin, puis recouvrir de béchamel et d’emmental.
+> Enfourner pendant 15 minutes jusqu’à obtenir une surface dorée.
 
 Endives au jambon | Plat | Français | 15 | 35 | Facile
 - endive: 4 pièce
@@ -1405,15 +1445,23 @@ Bœuf aux oignons | Plat | Chinois | 15 | 10 | Facile
 > Faire sauter les oignons, remettre le bœuf avec la sauce soja.
 > Servir avec le riz.
 
-Bœuf brocoli | Plat | Chinois | 15 | 10 | Facile
-- bœuf: 300 g
-- brocoli: 1 pièce
+Bœuf sauté aux brocolis et nouilles | Plat | Asiatique | 15 | 15 | Facile
+@id b-boeuf-brocoli
+@img img/recettes/b-boeuf-brocoli.webp
+- bœuf: 250 g
+- brocoli: 250 g
+- nouilles: 150 g
 - sauce soja: 3 c. à soupe
-- ail: 1 gousse
-- riz: 160 g
-> Cuire le brocoli 3 min à l’eau.
-> Saisir le bœuf émincé avec l’ail, ajouter brocoli et sauce soja.
-> Servir avec le riz.
+- ail: 2 gousse
+- gingembre frais: 15 g
+- miel: 1 c. à soupe
+- huile de tournesol: 1 c. à soupe *
+- poivre: 1 pincée *
+> Faire cuire les nouilles et les fleurettes de brocoli dans de l’eau bouillante pendant 5 minutes.
+> Émincer le bœuf et le faire saisir dans une poêle chaude avec l’huile.
+> Ajouter l’ail haché, le gingembre râpé et le brocoli égoutté.
+> Verser la sauce soja et le miel, puis faire sauter pendant 3 minutes.
+> Incorporer les nouilles égouttées, mélanger et servir immédiatement.
 
 Chili sin carne | Plat | Mexicain | 15 | 30 | Facile
 - haricots rouges: 1 boîte
@@ -1699,3 +1747,58 @@ Saucisses purée | Plat | Français | 10 | 25 | Facile
 - huile: 2 c. à soupe *
 > Faire dorer les pommes de terre en dés.
 > Ajouter les épinards, puis cuire les œufs au plat par-dessus.
+
+Saumon au citron et légumes rôtis | Plat | Méditerranéen | 15 | 25 | Facile
+@id b-saumon-au-citron-et-legumes-rotis
+@img img/recettes/b-saumon-au-citron-et-legumes-rotis.webp
+- saumon: 300 g
+- courgette: 1 pièce
+- carotte: 2 pièce
+- pomme de terre: 300 g
+- citron: 1 pièce
+- ail: 2 gousse
+- huile d’olive: 2 c. à soupe *
+- thym séché: 1 c. à café *
+- sel, poivre *
+> Préchauffer le four à 200 °C et couper les légumes en petits morceaux.
+> Mélanger les légumes avec l’huile, l’ail haché, le thym, le sel et le poivre.
+> Enfourner les légumes pendant 10 minutes sur une plaque.
+> Ajouter le saumon arrosé de jus de citron et poursuivre la cuisson pendant 15 minutes.
+> Servir le saumon avec les légumes rôtis et le citron restant.
+
+Quesadillas au poulet et poivrons | Plat | Mexicain | 15 | 15 | Facile
+@id b-quesadillas-au-poulet-et-poivrons
+@img img/recettes/b-quesadillas-au-poulet-et-poivrons.webp
+- tortilla de blé: 4 pièce
+- poulet: 250 g
+- poivron: 1 pièce
+- oignon: 1 pièce
+- cheddar: 100 g
+- crème fraîche: 60 g
+- paprika: 1 c. à café *
+- cumin: 1 c. à café *
+- huile d’olive: 1 c. à soupe *
+- sel, poivre *
+> Couper le poulet et le poivron en fines lamelles et émincer l’oignon.
+> Faire revenir le poulet et les légumes dans l’huile avec le paprika et le cumin pendant 10 minutes.
+> Répartir la préparation et le cheddar râpé sur une moitié de chaque tortilla, puis les replier.
+> Faire dorer les quesadillas dans une poêle pendant 2 minutes de chaque côté.
+> Couper les quesadillas en triangles et servir avec la crème fraîche.
+
+Gnocchis crémeux aux épinards et tomates | Plat | Italien | 10 | 15 | Facile
+@id b-gnocchis-cremeux-aux-epinards-et-tomates
+@img img/recettes/b-gnocchis-cremeux-aux-epinards-et-tomates.webp
+- gnocchis: 400 g
+- épinards: 150 g
+- tomates cerises: 200 g
+- crème fraîche: 120 g
+- parmesan: 40 g
+- ail: 2 gousse
+- huile d’olive: 1 c. à soupe *
+- basilic séché: 1 c. à café *
+- sel, poivre *
+> Faire revenir l’ail haché dans une poêle avec l’huile d’olive.
+> Ajouter les tomates cerises coupées en deux et les gnocchis, puis faire revenir pendant 5 minutes.
+> Incorporer les épinards et laisser cuire jusqu’à ce qu’ils réduisent.
+> Ajouter la crème fraîche, le basilic et le parmesan râpé, puis laisser mijoter 5 minutes.
+> Mélanger et servir les gnocchis bien chauds.

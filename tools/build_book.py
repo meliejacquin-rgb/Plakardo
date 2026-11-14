@@ -6,7 +6,7 @@ def norm(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 def slug(s): return "b-" + re.sub(r"[^a-z0-9]+", "-", norm(s)).strip("-")
 ALLERG = {
-  "gluten": r"\b(pates|spaghetti|farine|pain|pate brisee|pate a pizza|pate feuilletee|nouilles|semoule|chapelure|tortillas|biscuits|lasagne|gnocchis|macaroni|cannellonis|crozets|spatzle|biere|flocons d'avoine|granola)\b",
+  "gluten": r"\b(tortilla de ble|pates|spaghetti|farine|pain|pate brisee|pate a pizza|pate feuilletee|nouilles|semoule|chapelure|tortillas|biscuits|lasagne|gnocchis|macaroni|cannellonis|crozets|spatzle|biere|flocons d'avoine|granola)\b",
   "lait": r"\b(lait|beurre|creme|fromage|mozzarella|parmesan|feta|yaourt|chevre|ricotta|mascarpone|reblochon|cheddar|gorgonzola|comte|raclette)\b",
   "œufs": r"\boeufs?\b",
   "poisson": r"\b(saumon|thon|cabillaud|morue|poisson)\b",
@@ -23,7 +23,10 @@ for block in re.split(r"\n\s*\n", src):
     lines = [l.rstrip() for l in block.strip().splitlines() if l.strip()]
     title, typ, theme, prep, cook, diff = [x.strip() for x in lines[0].split("|")]
     ings, steps = [], []
+    rid_override, img = None, None
     for l in lines[1:]:
+        if l.startswith("@id "): rid_override = l[4:].strip(); continue
+        if l.startswith("@img "): img = l[5:].strip(); continue
         if l.startswith(">"): steps.append(l[1:].strip()); continue
         if not l.startswith("-"): raise SystemExit("ligne inconnue: " + l)
         body = l[1:].strip(); base = body.endswith("*"); body = body.rstrip("*").strip()
@@ -33,13 +36,13 @@ for block in re.split(r"\n\s*\n", src):
             ings.append({"name": name.strip(), "qty": q, "unit": unit, **({"base": True} if base else {})})
         else:
             ings.append({"name": body, "qty": None, "unit": "", "base": True})
-    rid = slug(title)
+    rid = rid_override or slug(title)
     assert rid not in seen, rid; seen.add(rid)
     blob = " ".join(norm(i["name"]) for i in ings if not (norm(i["name"]).startswith("lait de coco")))
     blob_all = " ".join(norm(i["name"]) for i in ings)
     al = [k for k, rx in ALLERG.items() if re.search(rx, blob if k == "lait" else blob_all)]
     out.append({"id": rid, "title": title, "type": typ, "theme": theme, "prepMin": int(prep), "cookMin": int(cook), "difficulty": diff,
-                "portions": 2, "ingredients": ings, "steps": steps, "allergens": al, "builtin": True, "kind": "book"})
+                "portions": 2, "ingredients": ings, "steps": steps, "allergens": al, "builtin": True, "kind": "book", **({"image": img} if img else {})})
 js = "// Livre de recettes intégré à Plakardo (généré par tools/build_book.py — ne pas modifier à la main).\nexport const BOOK = " + json.dumps(out, ensure_ascii=False, separators=(",", ":")) + ";\n"
 open(sys.argv[2], "w", encoding="utf-8").write(js)
 from collections import Counter
