@@ -20,6 +20,8 @@ function toNumber(tok) {
 // « 6 euros 50 », « 6,50 € », « 6 € 50 », « six euros » → 6.5
 function extractPrice(s) {
   const rx = /(\d+(?:[.,]\d{1,2})?|\b(?:un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|quinze|vingt|trente)\b)\s*(?:euros?|€|eur)\s*(\d{1,2})?(?!\s*(?:g|kg|l|cl|ml)\b)/i;
+  const cm = s.match(/(\d{1,2}|\b(?:dix|vingt|trente|quarante|cinquante)\b)\s*centimes?/i);
+  if (cm) { const v = toNumber(cm[1]); if (v != null) return { price: v / 100, rest: (s.slice(0, cm.index) + " " + s.slice(cm.index + cm[0].length)).replace(/(?:^|\s)(a|à|pour)\s*$/i, "").trim() }; }
   const m = s.match(rx);
   if (!m) return { price: null, rest: s };
   const a = toNumber(m[1]);
@@ -27,15 +29,50 @@ function extractPrice(s) {
   return { price: a == null ? null : Math.round((a + cents) * 100) / 100, rest: (s.slice(0, m.index) + " " + s.slice(m.index + m[0].length)).replace(/(?:^|\s)(a|à|pour|au prix de)\s*$/i, "").trim() };
 }
 
+// Dictée sans ponctuation : « un paquet de pâtes de 1 kg trois courgettes pour 2,20 € six rouleaux… »
+// → coupe avant chaque nouvelle quantité et après chaque prix.
+const QTY_START = /^(\d+([.,]\d+)?|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|quinze|vingt|trente|quarante|cinquante|cent|des|du|quelques|plusieurs|demi|douzaine)$/i;
+const CUR = /^(€|euros?|eur)$/i;
+const LINK = /^(de|d'|à|a|x|pour|par|en)$/i;
+function segment(src) {
+  return src.split(/,(?!\d)/).map((part) => {
+    const toks = part.trim().replace(/(\d)\s*€/g, "$1 €").split(/\s+/).filter(Boolean);
+    const out = []; let cur = []; let named = false; let priced = false;
+    const flush = () => { if (cur.length) out.push(cur.join(" ")); cur = []; named = false; priced = false; };
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i], nt = toks[i + 1] || "", prev = cur[cur.length - 1] || "";
+      const isNum = /^\d+([.,]\d+)?$/.test(t) || QTY_START.test(t);
+      // Prix : « 2,20 € », « trois euros 50 », « pour 4,25 € »
+      if (isNum && CUR.test(nt)) {
+        if (/^pour$/i.test(prev) || /^à$|^a$/i.test(prev)) cur.pop();
+        cur.push(t, nt); i++;
+        if (/^\d{1,2}$/.test(toks[i + 1] || "") && !CUR.test(toks[i + 2] || "") && !/^(g|kg|l|cl|ml)$/i.test(toks[i + 2] || "")) { cur.push(toks[i + 1]); i++; }
+        if (/^centimes?$/i.test(toks[i + 1] || "")) { cur.push(toks[i + 1]); i++; }
+        priced = true; continue;
+      }
+      // « orange à banane » : la dictée a entendu « à » au lieu de « et une » (sauf « pâte à tartiner », « crème à fouetter »…)
+      if (/^(à|a)$/i.test(t) && named && nt && !/^\d/.test(nt) && !QTY_START.test(nt) && !/^(tartiner|fouetter|pizza|gratin|cuire|cuisson|la|l'|base|raclette|soupe|risotto|sushi|r[aâ]per|poêler|boire|croquer|th[eé]|caf[eé])/i.test(nt)) { flush(); continue; }
+      if (isNum && named && !LINK.test(prev)) flush();
+      else if (isNum && named && /^pour$/i.test(prev)) { cur.pop(); flush(); }
+      else if (priced && !isNum) flush();
+      cur.push(t);
+      if (!isNum && !LINK.test(t) && !/^(g|kg|l|cl|ml|kilos?|grammes?|litres?|paquets?|bo[iî]tes?|sachets?|bouteilles?|rouleaux?|tubes?|sacs?|pots?|barquettes?|packs?|filets?|lots?)$/i.test(t)) named = true;
+    }
+    flush();
+    return out.join(", ");
+  }).filter(Boolean).join(", ");
+}
+
 // Retourne { store, total, items: [{ name, qty, unit, price }] }
 export function parsePhrase(text) {
   // Langage parlé : « J'ai acheté… ainsi que… J'ai également pris… » → liste d'articles.
-  let src = String(text || "").replace(/\n+/g, ", ")
+  let src = String(text || "").replace(/\n+/g, ", ").replace(/[’`]/g, "'")
     .replace(/^\s*(che|chaise|cher)\s+/i, "chez ")
     .replace(/[.!?;]+(\s|$)/g, ", ")
-    .replace(/\b(j['’ ]?ai|on a|nous avons|je viens d['’ ]?|il y a|j['’ ]?ai aussi|j['’ ]?ai également)\s*(également|aussi|encore|aujourd['’ ]?hui)?\s*(achet[ée]e?s?|pris|rapport[ée]s?|acheter|prendre)?(?=[\s,]|$)/gi, ", ")
-    .replace(/\b(ainsi que|et puis|en plus|de plus|et aussi|aussi|également|ensuite|il y avait|ajoute[rz]?|achète|achetez|rajoute)(?=[\s,]|$)/gi, ", ")
+    .replace(/(^|[\s,])(j'?\s?ai|on a|nous avons|je viens d'|il y a)\s*(également|egalement|aussi|encore|aujourd'hui)?\s*(achet[ée]e?s?|pris|rapport[ée]s?|acheter|prendre)?(?=[\s,]|$)/gi, "$1, ")
+    .replace(/(^|[\s,])(ainsi que|et puis|en plus|de plus|et aussi|aussi|également|egalement|ensuite|il y avait|ajouter|ajoutez|ajoute|achète|achetez|rajoute)(?=[\s,]|$)/gi, "$1, ")
     .replace(/,(\s*,)+/g, ",");
+  src = segment(src);
   let store = "";
   const sm = src.match(/\b(?:chez|a la|à la|au|aux|bei)\s+([A-Za-zÀ-ÿ'][\wÀ-ÿ' .-]{1,24}?)\s*(?::|,|$)/i);
   if (sm && !/^\d/.test(sm[1])) { store = cap(sm[1].trim()); src = src.replace(sm[0], ", "); }
@@ -67,6 +104,9 @@ export function parsePhrase(text) {
       if (u) { unit = u[1]; words.shift(); }
       if (qty === 0.5 && unit === "" && words[0] && /^(kilo|kg)/.test(norm(words[0]))) { unit = "kg"; words.shift(); }
     }
+    // « paquet de pâtes Panzani de 1 kg » : la taille du paquet n'est pas la quantité achetée
+    const size = words.join(" ").match(/\s+de\s+(\d+(?:[.,]\d+)?)\s*(g|kg|l|cl|ml)\b/i);
+    if (size) words = words.join(" ").replace(size[0], "").split(/\s+/);
     const ART = /^(?:(?:de la|du|des|de|les|la|le)\s+|(?:de l|d|l)['’]\s*)/i;
     let name = words.join(" ").replace(ART, "").replace(ART, "").trim();
     name = name.replace(/\s+(s'il te pla[iî]t|stp)$/i, "").trim();
