@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.7.1";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1805,7 +1805,7 @@ function viewTicket() {
       <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Ticket de caisse</h1><span class="sub">Les articles vont dans le stock, le montant dans le budget</span></div></div>
       <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
         <span class="eyebrow">1 · Faire lire le ticket par l’iPhone</span>
-        <span class="s">Touchez la zone ci-dessous, puis l’icône <strong>Scanner du texte</strong> (ou appui long › « Scanner le texte »). Visez le ticket, attendez que le texte apparaisse, puis touchez « Insérer ».<br>Pour un long ticket, scannez en deux fois : le texte s’ajoute à la suite.</span>
+        <span class="s">1. Touchez la zone ci-dessous (le menu « Coller · Remplir » apparaît).<br>2. Touchez <strong>« Remplir »</strong>, puis <strong>« Scanner le texte »</strong> (icône texte encadré). Selon la version d’iOS, l’icône peut aussi être directement dans le menu ou au-dessus du clavier.<br>3. Visez le ticket, attendez que le texte apparaisse, puis touchez <strong>« Insérer »</strong>.<br>Pour un long ticket, scannez en deux fois : le texte s’ajoute à la suite. Sinon, utilisez « Prendre le ticket en photo ».</span>
         <textarea id="tk-text" class="input" data-tktext rows="8" style="min-height:180px;padding:10px;font-family:inherit" placeholder="Texte du ticket">${esc(t.text)}</textarea>
         <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive, facture)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>
         <span class="s">Autre possibilité : ouvrez la photo du ticket dans Photos, touchez l’icône Texte en direct › Tout sélectionner › Copier, puis collez ici.</span>
