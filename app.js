@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.1";
+const APP_VERSION = "2.6.2";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -896,15 +896,18 @@ function viewAjouter() {
   const qa = ui.qa || (ui.qa = { text: "", target: "stock" });
   let panel = "";
   if (mode === "photo") {
-    panel = `<div class="add-head">${IC.photo(30)}<span><span class="add-title">Photographiez votre ticket</span><span class="add-sub">Plakardo lit la photo lui-même, gratuitement. Pour un long ticket, prenez 2 photos (haut puis bas).</span></span></div>
-      ${ui.ocr ? `<div class="ok-box">${esc(ui.ocr.msg)}</div>` : `
-      <label class="cta" style="cursor:pointer">${IC.photo(20)} Prendre la photo<input type="file" accept="image/*" capture="environment" data-tkimg hidden></label>
-      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Choisir dans Photos (1 ou 2 photos)<input type="file" accept="image/*" multiple data-tkimg hidden></label>`}
-      <span class="add-sub">Astuce : ticket bien à plat, en pleine lumière, cadré au plus près. Pour une lecture encore plus fiable, utilisez l’onglet Ticket (lecture de l’iPhone).</span>`;
+    panel = `<div class="add-head">${IC.photo(30)}<span><span class="add-title">Photo de vos produits</span><span class="add-sub">Prenez vos courses en photo, étiquettes visibles : la liste des produits est proposée, vous vérifiez, vous rangez.</span></span></div>
+      <div class="card" style="padding:12px;background:var(--soft);display:flex;flex-direction:column;gap:6px">
+        <span class="t">Bientôt disponible</span>
+        <span class="s">Reconnaître des produits sur une photo demande une IA d’image. En attendant, utilisez l’onglet <strong>Voix</strong> (« deux yaourts, du poulet… ») ou <strong>Ticket</strong>.</span></div>
+      <button class="out-btn" data-act="addmode" data-v="mic">Passer à la dictée</button>`;
   } else if (mode === "ticket") {
     panel = `<div class="add-head">${IC.ticket(30)}<span><span class="add-title">Importez votre ticket</span><span class="add-sub">Les articles sont identifiés en une seule opération, et le montant va dans le budget.</span></span></div>
+      ${ui.ocr ? `<div class="ok-box">${esc(ui.ocr.msg)}</div>` : `
       <a class="cta" href="#/ticket" data-act="tk-new">Scanner le ticket avec l’iPhone</a>
-      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>`;
+      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Prendre le ticket en photo<input type="file" accept="image/*" capture="environment" data-tkimg hidden></label>
+      <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>`}
+      <span class="add-sub">« Scanner avec l’iPhone » est le plus fiable. La photo est lue par Plakardo : vérifiez les montants.</span>`;
   } else if (mode === "mic") {
     panel = `<div class="add-head">${IC.mic(30)}<span><span class="add-title">Dites vos courses</span><span class="add-sub">« Chez Lidl : deux yaourts, un kilo de pommes 2 euros 50, du poulet, total 12 euros »</span></span></div>
       <div class="seg" role="group" style="grid-auto-columns:1fr"><button data-act="qa-target" data-v="stock" aria-pressed="${qa.target === "stock"}">Ranger dans le stock</button><button data-act="qa-target" data-v="courses" aria-pressed="${qa.target === "courses"}">Ajouter aux courses</button></div>
