@@ -58,7 +58,7 @@ function demoStore() {
   try { db = JSON.parse(localStorage.getItem(KEY)) || seed(); } catch { db = seed(); }
   const listeners = new Set();
   const shopListeners = new Set();
-  const opListeners = new Set(), metaListeners = new Set(), recListeners = new Set();
+  const opListeners = new Set(), metaListeners = new Set(), recListeners = new Set(), purListeners = new Set();
   db.ops = db.ops || []; db.meta = db.meta || seed().meta; db.recipes = db.recipes || {};
   const shopList = () => Object.entries(db.shopping || {}).map(([id, v]) => ({ id, ...v }));
   const save = () => {
@@ -68,6 +68,7 @@ function demoStore() {
     opListeners.forEach((cb) => cb([...db.ops].reverse().slice(0, 80)));
     metaListeners.forEach((cb) => cb(clean(db.meta)));
     recListeners.forEach((cb) => cb(Object.values(db.recipes)));
+    purListeners.forEach((cb) => cb(Object.values(db.purchases || {})));
   };
   const productMap = () => Object.fromEntries(db.products.map((p) => [p.id, p]));
   async function runOp(op) {
@@ -135,6 +136,11 @@ function demoStore() {
     async deleteShopping(id) { if (db.shopping) delete db.shopping[id]; save(); },
     async getBarcode(key) { return (db.barcodes || {})[key] || null; },
     async saveBarcode(key, data) { db.barcodes = db.barcodes || {}; db.barcodes[key] = data; save(); },
+    async getReceiptMap(keys) { const m = db.receiptmap || {}; return Object.fromEntries(keys.filter((k) => m[k]).map((k) => [k, m[k]])); },
+    async saveReceiptMap(key, data) { db.receiptmap = db.receiptmap || {}; db.receiptmap[key] = data; save(); },
+    subscribePurchases(cb) { purListeners.add(cb); cb(Object.values(db.purchases || {})); return () => purListeners.delete(cb); },
+    async addPurchase(p) { db.purchases = db.purchases || {}; const id = "pu" + Date.now().toString(36); db.purchases[id] = clean({ ...p, id }); save(); return id; },
+    async deletePurchase(id) { if (db.purchases) delete db.purchases[id]; save(); },
     async resetDemo() { db = seed(); save(); },
   };
 }
@@ -251,7 +257,7 @@ async function firebaseStore() {
     deleteRecipe(id) { return fs.deleteDoc(fs.doc(recCol, id)); },
     async exportAll() {
       const grab = async (c) => (await fs.getDocs(c)).docs.map((x) => ({ id: x.id, ...x.data() }));
-      return clean({ exportedAt: new Date().toISOString(), products: await grab(productsCol), shopping: await grab(fs.collection(db, ...base, "shopping")), recipes: await grab(recCol), meta: await grab(metaCol), operations: await grab(opsCol), barcodes: await grab(fs.collection(db, ...base, "barcodes")) });
+      return clean({ exportedAt: new Date().toISOString(), products: await grab(productsCol), shopping: await grab(fs.collection(db, ...base, "shopping")), recipes: await grab(recCol), meta: await grab(metaCol), operations: await grab(opsCol), barcodes: await grab(fs.collection(db, ...base, "barcodes")), purchases: await grab(fs.collection(db, ...base, "purchases")), receiptmap: await grab(fs.collection(db, ...base, "receiptmap")) });
     },
     subscribeShopping(cb) {
       return fs.onSnapshot(fs.collection(db, ...base, "shopping"), (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data() }))), () => {});
@@ -274,6 +280,28 @@ async function firebaseStore() {
     saveBarcode(key, data) {
       return fs.setDoc(fs.doc(db, ...base, "barcodes", encodeURIComponent(key)), { ...data, key, updatedAt: fs.serverTimestamp() }, { merge: true }).catch(() => {});
     },
+    // Mémoire des lignes de ticket (libellé du magasin → produit).
+    async getReceiptMap(keys) {
+      const out = {};
+      await Promise.all(keys.map(async (k) => {
+        try { const snap = await fs.getDoc(fs.doc(db, ...base, "receiptmap", encodeURIComponent(k))); if (snap.exists()) out[k] = snap.data(); } catch {}
+      }));
+      return out;
+    },
+    saveReceiptMap(key, data) {
+      return fs.setDoc(fs.doc(db, ...base, "receiptmap", encodeURIComponent(key)), { ...clean(data), key, updatedAt: fs.serverTimestamp() }, { merge: true }).catch(() => {});
+    },
+    // Dépenses (tickets et saisies manuelles) pour le budget.
+    subscribePurchases(cb) {
+      return fs.onSnapshot(fs.collection(db, ...base, "purchases"), (snap) => cb(snap.docs.map((x) => ({ id: x.id, ...x.data() }))), () => {});
+    },
+    async addPurchase(p) {
+      if (!navigator.onLine) throw new OpError("offline", "Hors ligne.");
+      const ref = fs.doc(fs.collection(db, ...base, "purchases"));
+      await fs.setDoc(ref, { ...clean(p), id: ref.id, createdAt: fs.serverTimestamp() });
+      return ref.id;
+    },
+    deletePurchase(id) { return fs.deleteDoc(fs.doc(db, ...base, "purchases", id)); },
   };
 }
 

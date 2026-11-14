@@ -3,7 +3,8 @@ import { createStore, isDemo, displayName, resolveName, newOpId } from "./data.j
 import * as E from "./engine.js";
 import { BOOK } from "./recipes.js";
 import { household } from "./firebase-config.js";
-import { parseDateText } from "./codes.js";
+import { parseDateText, lookupOFF } from "./codes.js";
+import { parseReceipt, lineKey } from "./receipt.js";
 import { initScanner, openScanner, closeScanner, refreshScanner } from "./scan.js";
 
 // ───────────────────────── Référentiels ─────────────────────────
@@ -13,7 +14,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.5.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -90,6 +91,7 @@ let unsub = null;
 let ops = [];
 let meta = {};
 let recipes = [];
+let purchases = [];
 let unsubExtra = [];
 let online = navigator.onLine;
 let lastSync = null;
@@ -413,6 +415,11 @@ function homeBody() {
     <span class="grow"><span class="t">Liste de courses</span><span class="s">${nShop ? plural(nShop, "article à acheter", "articles à acheter") : "Rien à acheter pour l’instant"}</span></span>
     ${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}
   </a>`;
+  const wk = purchases.filter((pu) => pu.date && weekStart(pu.date) === weekStart(E.todayIso())).reduce((n, pu) => n + Number(pu.total || 0), 0);
+  body += `<a class="card shop-entry" href="#/budget">
+    <span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3M15 13h2"/>', 22)}</span>
+    <span class="grow"><span class="t">Budget</span><span class="s">${purchases.length ? `Cette semaine : ${euro(wk)}` : "Ajoutez un ticket de caisse pour suivre vos dépenses"}</span></span>
+    ${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>`;
   body += catGrid();
   if (low.length) {
     body += `<section aria-label="Bientôt épuisé" style="display:flex;flex-direction:column;gap:10px">
@@ -881,6 +888,7 @@ function viewAjouter() {
     <label class="search">${I.search(18)}<input id="add-search" type="search" data-addsearch placeholder="Rechercher ou créer un produit…" value="${esc(ui.addSearch)}" autocomplete="off" aria-label="Rechercher un produit"></label>
     <div id="add-results" style="display:flex;flex-direction:column;gap:10px">${addResults(hits, q)}</div>
     ${rec.length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Récents</h2><div class="chips">${rec.map(({ p, d }) => `<button class="chip sm" style="background:var(--mint-soft);color:var(--mint-ink);border:0;font-weight:700" data-act="qadd" data-id="${p.id}" data-v="${d}">${esc(p.name)} +${fmtQ(d)} ${esc(p.unit || "")}</button>`).join("")}</div></section>` : ""}
+    <a class="cta" href="#/ticket" style="background:var(--primary);color:var(--primary-ink)">Ticket de caisse (tout d’un coup)</a>
     <a class="cta" href="#/scan?mode=batch" style="background:var(--ink);color:var(--bg)">Scanner plusieurs produits</a>
     <a class="cta" href="#/ajout" style="background:var(--surface);color:var(--primary);border:1px solid var(--primary)">Nouveau produit (fiche complète)</a>
   </main>`;
@@ -1316,7 +1324,9 @@ function viewCourses() {
   const tabBtn = (k, t, n) => `<button data-act="shoptab" data-v="${k}" aria-pressed="${tab === k}">${t}${n ? ` (${n})` : ""}</button>`;
   return `<main class="screen tall">${offlineBanner()}
     <div class="top"><div class="grow"><h1>Courses</h1><span class="sub">Partagée avec le foyer</span></div>
+      <a class="icon-btn" href="#/budget" aria-label="Budget">${svg('<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3M15 13h2"/>', 20)}</a>
       <button class="icon-btn" data-act="shop-share" aria-label="Partager la liste">${I.share(20)}</button></div>
+    <a class="out-btn" href="#/ticket" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ranger les courses avec le ticket de caisse</a>
     <div class="seg" role="group">${tabBtn("todo", "À acheter", todo.length)}${tabBtn("bought", "Acheté", bought.length)}${tabBtn("hist", "Historique", 0)}</div>
     ${tab === "todo" ? `<form id="shop-add" class="search" style="padding-right:6px"><label class="sr" for="shop-new">Ajouter un article</label>
       <input id="shop-new" placeholder="Ajouter un article…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
@@ -1491,6 +1501,263 @@ async function composeWeek({ replaceIndex = null } = {}) {
   } catch (e) { showToast(e?.message || "Impossible de composer le menu"); }
   finally { ui.busy = false; render(); }
 }
+
+// ───────────────────────── Ticket de caisse → stock + dépenses ─────────────────────────
+const euro = (n) => `${(Math.round((Number(n) || 0) * 100) / 100).toFixed(2).replace(".", ",")} €`;
+const DATED_CATS = ["alim", "pharma"];
+function guessCat(store, label, rayon) {
+  const n = E.normTxt(label);
+  if (rayon && rayon !== "alim") return rayon;
+  if (/katze|chat|cat|kitten|mome|felix|whiskas|gourmet|sheba|catsan|litiere|streu/.test(n)) return "chat";
+  if (/shampo|duschgel|gel douche|dentifrice|zahnpasta|deo|savon|seife|creme main|papier toilette|toilettenpapier|coton|rasoir/.test(n)) return "hyg";
+  return store.category || "alim";
+}
+// Texte d'un PDF (commande drive) : lignes reconstituées, colonnes séparées par plusieurs espaces.
+async function pdfToText(file) {
+  const pdfjs = await import("https://fastly.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "https://fastly.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs";
+  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const out = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const tc = await page.getTextContent();
+    const rows = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = it.transform[5], x = it.transform[4];
+      let row = rows.find((r) => Math.abs(r.y - y) < 3);
+      if (!row) { row = { y, items: [] }; rows.push(row); }
+      row.items.push({ x, w: it.width || 0, s: it.str });
+    }
+    rows.sort((p, q) => q.y - p.y);
+    for (const r of rows) {
+      r.items.sort((p, q) => p.x - q.x);
+      let line = "", end = null;
+      for (const it of r.items) {
+        const gap = end == null ? 0 : it.x - end;
+        line += end == null ? "" : gap > 8 ? "    " : gap > 0.8 ? " " : "";
+        line += it.s; end = it.x + it.w;
+      }
+      out.push(line);
+    }
+  }
+  return out.join("\n");
+}
+function newProdId() { return "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function stockAmount(line, p) {
+  const unit = (p ? p.unit : line.newUnit) || "pièce";
+  if (line.weight && ["g", "kg", "ml", "l", "cl"].includes(unit)) {
+    const per = E.convert(line.weight.value, line.weight.unit, unit);
+    if (per != null) return E.round3(per * line.qty);
+  }
+  return line.qty * (line.pack > 1 ? line.pack : 1);
+}
+async function readTicket() {
+  const text = ui.tk?.text || "";
+  const r = parseReceipt(text);
+  if (!r.items.length) { showToast("Aucun article reconnu : vérifiez que le texte du ticket est complet"); render(); return; }
+  ui.tk = { ...ui.tk, step: "review", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, sum: r.sum, lines: [] };
+  const keys = r.items.map((it) => lineKey(r.store, it));
+  let mem = {};
+  try { mem = await store.getReceiptMap(keys); } catch {}
+  ui.tk.lines = r.items.map((it, i) => {
+    const byEan = it.ean ? products.find((p) => p.barcode === it.ean) : null;
+    const known = mem[keys[i]] && find(mem[keys[i]].productId);
+    // Libellé de commande drive « Nom - Marque - 260g » → nom court.
+    const short = it.label.split(" - ")[0].replace(/\*+/g, "").trim();
+    const nl = E.normTxt(it.label);
+    const fuzzy = products.filter((p) => { const pn = E.normTxt(p.name); return pn.length >= 4 && (nl.includes(pn) || E.normTxt(short) === pn); }).sort((x, y) => y.name.length - x.name.length)[0];
+    const p = byEan || known || fuzzy || null;
+    const cat = p ? p.categoryId : guessCat({ category: r.category }, it.label, it.category);
+    const line = { ...it, key: keys[i], include: it.kind === "item", productId: p ? p.id : "new", newName: short + (it.weight && !/\d\s?(g|kg|ml|cl|l)\b/i.test(short) && r.store === "Fressnapf" ? ` ${fmtQ(it.weight.value)} ${it.weight.unit}` : ""), newCat: cat, newUnit: "pièce", dateText: "", expiry: "" };
+    line.amount = stockAmount(line, p);
+    return line;
+  });
+  render();
+  // Noms des produits inconnus via les codes EAN (Open Food Facts et mémoire du foyer).
+  const unknown = ui.tk.lines.filter((l) => l.productId === "new" && l.ean);
+  for (const l of unknown) {
+    try {
+      const tpl = (await store.getBarcode(l.ean)) || (await lookupOFF(l.ean));
+      if (tpl && ui.tk?.lines?.includes(l)) {
+        l.newName = tpl.name || l.newName;
+        if (tpl.categoryId) l.newCat = tpl.categoryId;
+        if (tpl.unit) l.newUnit = tpl.unit;
+        render();
+      }
+    } catch {}
+  }
+}
+function tkProductOptions(sel) {
+  const groups = CATS.map((c) => `<optgroup label="${c.name}">${products.filter((p) => p.categoryId === c.id).sort(byName).map((p) => `<option value="${p.id}" ${sel === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</optgroup>`).join("");
+  return `<option value="new" ${sel === "new" ? "selected" : ""}>＋ Nouveau produit</option>${groups}`;
+}
+function viewTicket() {
+  const t = ui.tk || (ui.tk = { step: "text", text: "" });
+  if (t.step === "text") {
+    return `<main class="screen no-nav">${offlineBanner()}
+      <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Ticket de caisse</h1><span class="sub">Les articles vont dans le stock, le montant dans le budget</span></div></div>
+      <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+        <span class="eyebrow">1 · Faire lire le ticket par l’iPhone</span>
+        <span class="s">Touchez la zone ci-dessous, puis l’icône <strong>Scanner du texte</strong> (ou appui long › « Scanner le texte »). Visez le ticket, attendez que le texte apparaisse, puis touchez « Insérer ».<br>Pour un long ticket, scannez en deux fois : le texte s’ajoute à la suite.</span>
+        <textarea id="tk-text" class="input" data-tktext rows="8" style="min-height:180px;padding:10px;font-family:inherit" placeholder="Texte du ticket">${esc(t.text)}</textarea>
+        <label class="out-btn" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importer un PDF (commande drive, facture)<input type="file" accept="application/pdf,.pdf" data-tkpdf hidden></label>
+        <span class="s">Autre possibilité : ouvrez la photo du ticket dans Photos, touchez l’icône Texte en direct › Tout sélectionner › Copier, puis collez ici.</span>
+      </section>
+    </main><div class="cta-bar"><button class="cta" data-act="tk-read" ${t.text.trim() ? "" : "disabled"}>Lire le ticket</button></div>`;
+  }
+  const inc = t.lines.filter((l) => l.include);
+  const sumInc = Math.round(t.lines.reduce((n, l) => n + l.price, 0) * 100) / 100;
+  const card = (l, i) => {
+    const p = l.productId !== "new" ? find(l.productId) : null;
+    const cat = p ? p.categoryId : l.newCat;
+    const unit = p ? p.unit || "pièce" : l.newUnit;
+    return `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;${l.include ? "" : "opacity:.55"}">
+      <div class="row-between" style="gap:8px"><span class="grow" style="min-width:0"><span class="t" style="display:block">${esc(l.label)}</span><span class="s" style="display:block">${l.qty > 1 ? `${l.qty} × ${euro(l.unitPrice)} · ` : ""}${l.weight ? `${fmtQ(l.weight.value)} ${l.weight.unit}` : ""}${l.ean ? ` · EAN ${l.ean}` : ""}${l.kind === "deposit" ? " · consigne" : ""}</span></span>
+        <strong class="h" style="font-size:16px">${euro(l.price)}</strong></div>
+      ${l.kind === "deposit" ? `<span class="s">Consigne : comptée dans la dépense, pas dans le stock.</span>` : `
+      <button class="chip sm" data-act="tk-inc" data-i="${i}" aria-pressed="${l.include}" style="align-self:flex-start">${l.include ? "Ranger dans le stock" : "Ne pas ranger (dépense seulement)"}</button>
+      ${l.include ? `<select class="input sm" data-tkp="${i}" aria-label="Produit du stock">${tkProductOptions(l.productId)}</select>
+      ${l.productId === "new" ? `<input class="input sm" data-tkname="${i}" value="${esc(l.newName)}" aria-label="Nom du nouveau produit">
+        <div class="chips">${CATS.map((c) => `<button class="chip sm" data-act="tk-cat" data-i="${i}" data-v="${c.id}" aria-pressed="${l.newCat === c.id}">${c.name}</button>`).join("")}</div>` : ""}
+      <div class="row-between"><span class="label">Quantité à ranger</span><span style="display:flex;align-items:center;gap:6px"><input class="qinput sm" style="width:70px;border:1px solid var(--border)" inputmode="decimal" data-tkq="${i}" value="${fmtQ(l.amount)}" aria-label="Quantité"><span class="s">${esc(unit)}</span></span></div>
+      ${DATED_CATS.includes(cat) ? `<input class="input sm" inputmode="numeric" data-tkd="${i}" value="${esc(l.dateText)}" placeholder="${cat === "pharma" ? "Péremption" : "DLC"} facultative : JJ/MM/AA (ou Scanner du texte)" aria-label="Date de ${esc(l.label)}">
+        <div class="chips">${[[3, "+3 j"], [7, "+1 sem."], [30, "+1 mois"], [180, "+6 mois"]].map(([n, lab]) => `<button class="chip sm" data-act="tk-date" data-i="${i}" data-v="${n}">${lab}</button>`).join("")}${l.expiry ? `<span class="s" style="align-self:center;color:var(--mint-ink);font-weight:700">${frDate(l.expiry)}</span>` : ""}</div>` : ""}` : ""}`}
+    </div>`;
+  };
+  return `<main class="screen no-nav">${offlineBanner()}
+    <div class="top"><button class="icon-btn" data-act="tk-back" aria-label="Retour">${I.back(22)}</button><div class="grow"><h1 style="font-size:24px">Vérifier le ticket</h1><span class="sub">${plural(t.lines.length, "ligne lue", "lignes lues")} · Plakardo retient vos choix pour la prochaine fois</span></div></div>
+    <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+      <div class="row-between"><span class="label">Magasin</span><input class="input sm" style="max-width:190px" data-tkstore value="${esc(t.store)}" placeholder="Ex. Lidl Kehl"></div>
+      <div class="row-between"><span class="label">Date</span><input class="input sm" style="max-width:190px" type="date" data-tkdate value="${esc(t.date)}"></div>
+      <div class="row-between"><span class="label">Total du ticket</span><strong class="h">${euro(t.total)}</strong></div>
+      ${Math.abs(sumInc - t.total) > 0.05 ? `<span class="s warn">Somme des lignes lues : ${euro(sumInc)}. Une ligne a peut-être été mal lue : vérifiez ou rescannez.</span>` : `<span class="s" style="color:var(--mint-ink);font-weight:700">Toutes les lignes correspondent au total.</span>`}
+    </section>
+    ${t.lines.map(card).join("")}
+  </main><div class="cta-bar"><button class="cta" data-act="tk-go" ${ui.busy ? "disabled" : ""}>Ranger ${plural(inc.length, "article", "articles")} · ${euro(t.total)}</button></div>`;
+}
+async function ticketGo() {
+  if (!canWrite()) return;
+  const t = ui.tk;
+  const lines = [], created = {};
+  for (const l of t.lines) {
+    if (!l.include || l.kind !== "item") continue;
+    const amount = parseQ(l.amount);
+    if (!(amount > 0)) continue;
+    const expiry = l.expiry ? { expiry: l.expiry, expiryType: (l.productId === "new" ? l.newCat : find(l.productId)?.categoryId) === "alim" ? "DLC" : "unknown" } : {};
+    if (l.productId === "new") {
+      const name = (l.newName || l.label).trim();
+      const twin = products.find((p) => p.categoryId === l.newCat && p.name.toLowerCase() === name.toLowerCase());
+      if (twin) { l.productId = twin.id; }
+      else {
+        const id = created[name.toLowerCase()] || newProdId();
+        const loc = E.defaultLocFor(l.newCat);
+        lines.push({ kind: "add", productId: id, amount, loc, ...expiry, ...(created[name.toLowerCase()] ? {} : { newProduct: { name, detail: "", categoryId: l.newCat, unit: l.newUnit || "pièce", minQuantity: 1, lowAlert: true, trackingMode: "quantity", homeLoc: loc, ...(l.ean ? { barcode: l.ean } : {}) } }) });
+        created[name.toLowerCase()] = id; l.productId = id; l.createdName = name;
+        continue;
+      }
+    }
+    const p = find(l.productId);
+    if (!p) continue;
+    if (E.isStatusMode(p)) { lines.push({ kind: "status", productId: p.id, status: "dispo" }); continue; }
+    lines.push({ kind: "add", productId: p.id, amount, loc: p.homeLoc || (E.fefo(E.lotsOf(p))[0] || {}).loc || E.defaultLocFor(p.categoryId), ...expiry });
+  }
+  ui.busy = true; render();
+  const opId = newOpId();
+  try {
+    if (lines.length) await store.runOp({ id: opId, type: "store", label: `Ticket ${t.store || "de caisse"} · ${plural(lines.length, "article", "articles")}`, by: me(), lines });
+    const items = t.lines.map((l) => {
+      const p = l.productId && l.productId !== "new" ? find(l.productId) : null;
+      return { label: l.label, price: l.price, qty: l.qty, productId: l.include && l.productId !== "new" ? l.productId : null, categoryId: l.kind === "deposit" ? "autre" : (p ? p.categoryId : l.newCat) || "alim" };
+    });
+    await store.addPurchase({ store: (t.store || "").trim() || "Magasin", date: t.date || E.todayIso(), total: t.total, items, by: me(), source: "ticket", at: Date.now() });
+    // Mémoire : libellé du ticket → produit ; prix habituel du produit ; liste de courses à jour.
+    for (const l of t.lines) {
+      if (!l.include || l.kind !== "item" || !l.productId || l.productId === "new") continue;
+      store.saveReceiptMap(l.key, { productId: l.productId, label: l.label, store: t.store || "" });
+      if (l.ean && l.createdName) store.saveBarcode(l.ean, { name: l.createdName, categoryId: l.newCat, unit: l.newUnit || "pièce" });
+      const amt = parseQ(l.amount);
+      if (amt > 0 && find(l.productId)) store.updateProduct(l.productId, { lastPrice: Math.round((l.price / amt) * 10000) / 10000, lastPriceAt: t.date, lastStore: t.store || "" }).catch?.(() => {});
+      const sh = shopping.find((dd) => dd.id === `p_${l.productId}` && (dd.state || "todo") !== "stored");
+      if (sh) store.setShopping(sh.id, { state: "stored", checked: false, forced: false, doneAt: Date.now(), doneBy: me(), doneQty: qty(find(l.productId)) + parseQ(l.amount) });
+    }
+    ui.tk = null;
+    showToast(`Ticket rangé : ${plural(lines.length, "article", "articles")} · ${euro(t.total)} au budget`, lines.length ? () => undoOp(opId) : null);
+    go("#/budget");
+  } catch (e) { showToast(e?.message || "Impossible de ranger le ticket"); }
+  finally { ui.busy = false; render(); }
+}
+
+// ───────────────────────── Budget ─────────────────────────
+const CAT_NAMES = { alim: "Alimentaire", hyg: "Hygiène", pharma: "Pharmacie", chat: "Chat", autre: "Autre" };
+const CAT_COLORS = { alim: "var(--cat-alim)", hyg: "var(--cat-hyg)", pharma: "var(--cat-pharma)", chat: "var(--cat-chat)", autre: "var(--muted-2)" };
+function weekStart(iso) { const [y, m, d] = iso.split("-").map(Number); const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); return localDate(dt); }
+function purchaseSplit(pu) {
+  const out = {};
+  const items = pu.items && pu.items.length ? pu.items : [{ price: pu.total, categoryId: pu.category || "autre" }];
+  let s = 0;
+  for (const it of items) { const c = it.categoryId || "autre"; out[c] = (out[c] || 0) + Number(it.price || 0); s += Number(it.price || 0); }
+  const diff = Number(pu.total || 0) - s; // remises globales, arrondis
+  if (Math.abs(diff) > 0.009) { const main = Object.entries(out).sort((a, b) => b[1] - a[1])[0]?.[0] || "autre"; out[main] = (out[main] || 0) + diff; }
+  return out;
+}
+function viewBudget() {
+  const list = [...purchases].filter((p) => p.date).sort((a, b) => (b.date + (b.at || 0)).localeCompare(a.date + (a.at || 0)));
+  const thisWeek = weekStart(E.todayIso());
+  const weeks = new Map();
+  for (const pu of list) { const w = weekStart(pu.date); weeks.set(w, (weeks.get(w) || 0) + Number(pu.total || 0)); }
+  const last8 = Array.from({ length: 8 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - 7 * (7 - i)); const w = weekStart(localDate(d)); return { w, v: weeks.get(w) || 0 }; });
+  const max = Math.max(1, ...last8.map((x) => x.v));
+  const active = last8.filter((x) => x.v > 0);
+  const avgWeek = active.length ? active.reduce((n, x) => n + x.v, 0) / active.length : 0;
+  const recent = list.filter((pu) => E.daysBetween(pu.date) >= -56);
+  const avgBasket = recent.length ? recent.reduce((n, p) => n + Number(p.total || 0), 0) / recent.length : 0;
+  const split = {};
+  for (const pu of recent) for (const [c, v] of Object.entries(purchaseSplit(pu))) split[c] = (split[c] || 0) + v;
+  const splitTotal = Object.values(split).reduce((n, v) => n + v, 0) || 1;
+  const byStore = {};
+  for (const pu of recent) { const s = pu.store || "Magasin"; byStore[s] = byStore[s] || { n: 0, v: 0 }; byStore[s].n += 1; byStore[s].v += Number(pu.total || 0); }
+  // Estimation de la liste de courses à partir des prix habituels.
+  const todo = shoppingItems().filter((it) => it.state === "todo");
+  let est = 0, known = 0;
+  for (const it of todo) { if (it.product && it.product.lastPrice) { est += it.product.lastPrice * (parseQ(it.qty) || 1); known += 1; } }
+  const m = ui.budgetManual;
+  return `<main class="screen">${offlineBanner()}
+    <div class="top"><div class="grow"><h1>Budget</h1><span class="sub">D’après vos tickets et dépenses saisies</span></div>
+      <a class="icon-btn" href="#/ticket" aria-label="Ajouter un ticket">${I.plus(20)}</a></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Cette semaine</span><strong class="h" style="font-size:24px;display:block">${euro(weeks.get(thisWeek) || 0)}</strong></div>
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Moyenne / semaine</span><strong class="h" style="font-size:24px;display:block">${euro(avgWeek)}</strong><span class="s">${active.length ? `sur ${plural(active.length, "semaine", "semaines")}` : "pas encore de données"}</span></div>
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Panier moyen</span><strong class="h" style="font-size:24px;display:block">${euro(avgBasket)}</strong><span class="s">${plural(recent.length, "passage", "passages")} en 8 sem.</span></div>
+      <div class="card" style="padding:12px 14px"><span class="eyebrow">Liste de courses</span><strong class="h" style="font-size:24px;display:block">${known ? "≈ " + euro(est) : "—"}</strong><span class="s">${todo.length ? `prix connu pour ${known}/${todo.length} articles` : "liste vide"}</span></div>
+    </div>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">8 dernières semaines</span>
+      <div style="display:flex;align-items:flex-end;gap:6px;height:110px">${last8.map((x) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">
+        <span class="s" style="font-size:10px">${x.v ? Math.round(x.v) : ""}</span>
+        <div style="width:100%;height:${Math.max(2, Math.round((x.v / max) * 80))}px;border-radius:6px 6px 2px 2px;background:${x.w === thisWeek ? "var(--primary)" : "var(--border-2)"}"></div>
+        <span class="s" style="font-size:10px">${x.w.slice(8, 10)}/${x.w.slice(5, 7)}</span></div>`).join("")}</div></section>
+    ${Object.keys(split).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Répartition (8 sem.)</span>
+      <div style="display:flex;height:14px;border-radius:7px;overflow:hidden">${Object.entries(split).filter(([, v]) => v > 0).map(([c, v]) => `<div style="width:${(v / splitTotal) * 100}%;background:${CAT_COLORS[c] || "var(--muted-2)"}"></div>`).join("")}</div>
+      ${Object.entries(split).sort((a, b) => b[1] - a[1]).map(([c, v]) => `<div class="row-between"><span><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${CAT_COLORS[c] || "var(--muted-2)"};margin-right:6px"></span>${CAT_NAMES[c] || c}</span><span class="s">${euro(v)} · ${Math.round((v / splitTotal) * 100)} %</span></div>`).join("")}</section>` : ""}
+    ${Object.keys(byStore).length ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Par magasin (8 sem.)</span>
+      ${Object.entries(byStore).sort((a, b) => b[1].v - a[1].v).map(([s, o]) => `<div class="row-between"><span>${esc(s)}</span><span class="s">${euro(o.v)} · ${plural(o.n, "passage", "passages")} · moy. ${euro(o.v / o.n)}</span></div>`).join("")}</section>` : ""}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <a class="cta" href="#/ticket" style="height:50px;font-size:15px">Ticket de caisse</a>
+      <button class="out-btn" style="height:50px" data-act="bud-manual">Saisir une dépense</button></div>
+    ${m ? `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Dépense sans ticket</span>
+      <input class="input sm" data-bm="store" value="${esc(m.store)}" placeholder="Magasin">
+      <input class="input sm" data-bm="total" inputmode="decimal" value="${esc(m.total)}" placeholder="Montant en €">
+      <div class="chips">${Object.entries(CAT_NAMES).map(([c, n]) => `<button class="chip sm" data-act="bm-cat" data-v="${c}" aria-pressed="${m.cat === c}">${n}</button>`).join("")}</div>
+      <input class="input sm" type="date" data-bm="date" value="${esc(m.date)}">
+      <button class="cta" style="height:46px" data-act="bm-save">Enregistrer</button></section>` : ""}
+    <section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">Derniers achats</h2>
+      ${list.length ? `<div class="card list">${list.slice(0, 15).map((pu) => `<div class="list-row"><span class="grow"><span class="t">${esc(pu.store || "Magasin")}</span><span class="s">${frDate(pu.date)} · ${pu.source === "ticket" ? plural((pu.items || []).length, "ligne", "lignes") : "saisie manuelle"}${pu.by ? " · " + esc(pu.by) : ""}</span></span>
+        <strong>${euro(pu.total)}</strong><button class="sc-x" data-act="bud-del" data-v="${pu.id}" aria-label="Supprimer cet achat" style="${ui.budDel === pu.id ? "width:auto;padding:0 8px;color:var(--warn);font-size:13px;font-weight:700" : ""}">${ui.budDel === pu.id ? "Supprimer ?" : "×"}</button></div>`).join("")}</div>`
+      : `<p class="empty-state">Ajoutez votre premier ticket de caisse : le stock et le budget se remplissent en même temps.</p>`}
+    </section>
+  </main>${nav("courses")}`;
+}
+
 // ───────────────────────── Rendu ─────────────────────────
 function render() {
   const active = document.activeElement;
@@ -1515,6 +1782,8 @@ function render() {
       case "recette": html = viewRecette(r.arg); break;
       case "menu": html = viewMenu(); break;
       case "import": html = viewImport(r); break;
+      case "ticket": html = viewTicket(); break;
+      case "budget": html = viewBudget(); break;
       case "placard": html = viewPlacard(r.arg); break;
       case "ajout":
       case "produit": html = viewForm(r); break;
@@ -1678,6 +1947,26 @@ app.addEventListener("click", (e) => {
       break;
     }
     case "week-make": composeWeek(); break;
+    case "tk-read": readTicket(); break;
+    case "tk-back": ui.tk = { step: "text", text: ui.tk?.text || "" }; render(); break;
+    case "tk-inc": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.include = !l.include; render(); } break; }
+    case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; render(); } break; }
+    case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); render(); } break; }
+    case "tk-go": ticketGo(); break;
+    case "bud-manual": ui.budgetManual = ui.budgetManual ? null : { store: "", total: "", cat: "alim", date: E.todayIso() }; render(); break;
+    case "bm-cat": if (ui.budgetManual) { ui.budgetManual.cat = v; render(); } break;
+    case "bm-save": {
+      const m = ui.budgetManual; const amount = parseQ(m?.total);
+      if (!m || !(amount > 0)) { showToast("Indiquez un montant"); render(); break; }
+      if (!canWrite()) break;
+      store.addPurchase({ store: m.store.trim() || "Magasin", date: m.date || E.todayIso(), total: amount, category: m.cat, items: [{ label: "Saisie manuelle", price: amount, categoryId: m.cat }], by: me(), source: "manual", at: Date.now() })
+        .then(() => { ui.budgetManual = null; showToast("Dépense enregistrée"); render(); }).catch((e) => { showToast(e?.message || "Enregistrement impossible"); render(); });
+      break;
+    }
+    case "bud-del":
+      if (ui.budDel === v) { ui.budDel = null; store.deletePurchase(v).catch(() => {}); showToast("Achat supprimé du budget"); }
+      else { ui.budDel = v; setTimeout(() => { if (ui.budDel === v) { ui.budDel = null; render(); } }, 4000); }
+      render(); break;
     case "menu-swap": composeWeek({ replaceIndex: Number(t.dataset.i) }); break;
     case "book-more": ui.bookMore = (ui.bookMore || 30) + 30; render(); break;
     case "rec-cook": { const r = findRecipe(v); if (r) cookFromRecipe(r); break; }
@@ -1735,6 +2024,14 @@ app.addEventListener("input", (e) => {
   }
   if (t.matches("[data-cookq]")) { const c = ui.cook[Number(t.dataset.cookq)]; if (c) c.qty = parseQ(t.value); return; }
   if (t.matches("[data-recpaste]")) { ui.recPaste = t.value; return; }
+  if (t.matches("[data-tktext]")) { const had = !!(ui.tk?.text || "").trim(); ui.tk = { ...(ui.tk || {}), step: "text", text: t.value }; if (had !== !!t.value.trim()) render(); return; }
+  if (t.matches("[data-tkp]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkp)]; if (l) { l.productId = t.value; l.amount = stockAmount(l, find(t.value)); render(); } return; }
+  if (t.matches("[data-tkname]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkname)]; if (l) l.newName = t.value; return; }
+  if (t.matches("[data-tkq]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkq)]; if (l) l.amount = parseQ(t.value); return; }
+  if (t.matches("[data-tkd]")) { const l = ui.tk?.lines?.[Number(t.dataset.tkd)]; if (l) { l.dateText = t.value; l.expiry = parseDateText(t.value) || ""; } return; }
+  if (t.matches("[data-tkstore]")) { if (ui.tk) ui.tk.store = t.value; return; }
+  if (t.matches("[data-tkdate]")) { if (ui.tk) ui.tk.date = t.value; return; }
+  if (t.matches("[data-bm]")) { if (ui.budgetManual) ui.budgetManual[t.dataset.bm] = t.value; return; }
   if (t.matches("[data-booksearch]")) { ui.bookSearch = t.value; ui.bookMore = 30; const caret = t.selectionStart; render(); const el = document.getElementById("book-search"); if (el) { el.focus(); try { el.setSelectionRange(caret, caret); } catch {} } return; }
   if (t.matches("[data-rf]")) { const k = t.dataset.rf; ui.recFilters[k] = k === "mustUse" || k === "exclude" ? splitList(t.value) : t.value; if (t.tagName === "SELECT") render(); return; }
   if (t.matches("[data-storeq]")) { const s = ui.storeSel?.[Number(t.dataset.storeq)]; if (s) s.qty = parseQ(t.value); return; }
@@ -1758,6 +2055,18 @@ app.addEventListener("input", (e) => {
     ui.form[t.dataset.field] = t.value;
     if (t.type === "date") render();
   }
+});
+
+app.addEventListener("change", async (e) => {
+  const t = e.target;
+  if (!t.matches || !t.matches("[data-tkpdf]") || !t.files || !t.files[0]) return;
+  ui.busy = true; showToast("Lecture du PDF…"); render();
+  try {
+    const text = await pdfToText(t.files[0]);
+    ui.tk = { step: "text", text };
+    await readTicket();
+  } catch (err) { console.error(err); showToast("PDF illisible : réessayez, ou copiez-collez son texte"); }
+  finally { ui.busy = false; render(); }
 });
 
 app.addEventListener("paste", (e) => {
@@ -1852,7 +2161,7 @@ async function start() {
     if (unsub) { unsub(); unsub = null; }
     if (unsubShop) { unsubShop(); unsubShop = null; }
     unsubExtra.forEach((f) => f && f()); unsubExtra = [];
-    ops = []; meta = {}; recipes = [];
+    ops = []; meta = {}; recipes = []; purchases = [];
     shopping = [];
     products = [];
     loaded = false;
@@ -1863,6 +2172,7 @@ async function start() {
         store.subscribeOps((list) => { ops = list; render(); }),
         store.subscribeMeta((m) => { meta = m || {}; render(); }),
         store.subscribeRecipes((list) => { recipes = list; render(); }),
+        store.subscribePurchases((list) => { purchases = list; render(); }),
       ];
       unsub = store.subscribe(
         (list) => { products = list; loaded = true; if (navigator.onLine) lastSync = Date.now(); render(); refreshScanner(); },
