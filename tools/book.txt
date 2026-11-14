@@ -527,6 +527,7 @@ Fajitas de bœuf aux poivrons | Plat | Mexicain | 15 | 15 | Facile
 
 Riz méditerranéen aux pois chiches | Plat | Méditerranéen | 10 | 20 | Facile
 @id b-riz-mediterraneen-aux-pois-chiches
+@img img/recettes/b-riz-mediterraneen-aux-pois-chiches.webp
 - riz: 150 g
 - pois chiches: 200 g
 - courgette: 1 pièce
@@ -543,6 +544,7 @@ Riz méditerranéen aux pois chiches | Plat | Méditerranéen | 10 | 20 | Facile
 
 Rösti au jambon et salade | Plat | Européen | 15 | 20 | Facile
 @id b-rosti-au-jambon-et-salade
+@img img/recettes/b-rosti-au-jambon-et-salade.webp
 - pomme de terre: 450 g
 - jambon blanc: 3 tranche
 - œuf: 1 pièce
@@ -557,6 +559,7 @@ Rösti au jambon et salade | Plat | Européen | 15 | 20 | Facile
 
 Nouilles soba au poulet et chou | Plat | Japonais | 15 | 15 | Facile
 @id b-nouilles-soba-au-poulet-et-chou
+@img img/recettes/b-nouilles-soba-au-poulet-et-chou.webp
 - nouilles soba: 160 g
 - poulet: 280 g
 - chou blanc: 200 g
@@ -573,6 +576,7 @@ Nouilles soba au poulet et chou | Plat | Japonais | 15 | 15 | Facile
 
 Poivrons farcis au boulgour et feta | Plat | Grec | 15 | 25 | Facile
 @id b-poivrons-farcis-au-boulgour-et-feta
+@img img/recettes/b-poivrons-farcis-au-boulgour-et-feta.webp
 - poivron: 2 pièce
 - boulgour: 120 g
 - feta: 120 g
@@ -588,6 +592,7 @@ Poivrons farcis au boulgour et feta | Plat | Grec | 15 | 25 | Facile
 
 Crevettes à l'ail et riz citronné | Plat | Espagnol | 10 | 15 | Facile
 @id b-crevettes-a-l-ail-et-riz-citronne
+@img img/recettes/b-crevettes-a-l-ail-et-riz-citronne.webp
 - crevettes décortiquées: 300 g
 - riz: 150 g
 - ail: 4 gousse
@@ -603,6 +608,7 @@ Crevettes à l'ail et riz citronné | Plat | Espagnol | 10 | 15 | Facile
 
 Pâtes crémeuses au potimarron | Plat | Italien | 15 | 20 | Facile
 @id b-pates-cremeuses-au-potimarron
+@img img/recettes/b-pates-cremeuses-au-potimarron.webp
 - pâtes: 200 g
 - potimarron: 350 g
 - crème fraîche: 100 g
@@ -636,6 +642,7 @@ Korma de légumes et riz | Plat | Indien | 15 | 25 | Facile
 
 Sauté de dinde à la crème et paprika | Plat | Européen | 10 | 20 | Facile
 @id b-saute-de-dinde-a-la-creme-et-paprika
+@img img/recettes/b-saute-de-dinde-a-la-creme-et-paprika.webp
 - dinde: 300 g
 - champignons: 200 g
 - oignon: 1 pièce
@@ -651,6 +658,7 @@ Sauté de dinde à la crème et paprika | Plat | Européen | 10 | 20 | Facile
 
 Poisson façon curry vert | Plat | Thaïlandais | 15 | 15 | Facile
 @id b-poisson-facon-curry-vert
+@img img/recettes/b-poisson-facon-curry-vert.webp
 - poisson blanc: 300 g
 - courgette: 1 pièce
 - poivron: 1 pièce
@@ -667,6 +675,7 @@ Poisson façon curry vert | Plat | Thaïlandais | 15 | 15 | Facile
 
 Gnocchis au gorgonzola et épinards | Plat | Italien | 10 | 15 | Facile
 @id b-gnocchis-au-gorgonzola-et-epinards
+@img img/recettes/b-gnocchis-au-gorgonzola-et-epinards.webp
 - gnocchis: 400 g
 - gorgonzola: 90 g
 - épinards: 150 g
@@ -681,6 +690,7 @@ Gnocchis au gorgonzola et épinards | Plat | Italien | 10 | 15 | Facile
 
 Poêlée de haricots blancs à la tomate | Plat | Français | 10 | 20 | Facile
 @id b-poelee-de-haricots-blancs-a-la-tomate
+@img img/recettes/b-poelee-de-haricots-blancs-a-la-tomate.webp
 - haricots blancs: 400 g
 - tomates concassées: 300 g
 - poivron: 1 pièce
