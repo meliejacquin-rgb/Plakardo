@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.7.1";
+const APP_VERSION = "2.7.2";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1766,7 +1766,7 @@ async function readTicket() {
   const text = ui.tk?.text || "";
   const r = parseReceipt(text);
   if (!r.items.length) { showToast("Aucun article reconnu : vérifiez que le texte du ticket est complet"); render(); return; }
-  ui.tk = { ...ui.tk, step: "review", source: "ticket", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, sum: r.sum, lines: [] };
+  ui.tk = { ...ui.tk, step: "review", source: "ticket", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, readTotal: r.total, sum: r.sum, lines: [] };
   ui.tk.lines = await prepareLines(r.items, r.store, r.category);
   render();
   // Noms des produits inconnus via les codes EAN (Open Food Facts et mémoire du foyer).
@@ -1840,7 +1840,8 @@ function viewTicket() {
       <div class="row-between"><span class="label">Magasin</span><input class="input sm" style="max-width:190px" data-tkstore value="${esc(t.store)}" placeholder="Ex. Lidl Kehl"></div>
       <div class="row-between"><span class="label">Date</span><input class="input sm" style="max-width:190px" type="date" data-tkdate value="${esc(t.date)}"></div>
       ${voice ? `<div class="row-between"><span class="label">Total payé</span><span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:86px;border:1px solid var(--border);font-size:16px" inputmode="decimal" data-tktotal value="${t.total != null ? fmtQ(t.total) : ""}" placeholder="${sumInc ? fmtQ(sumInc) : "facultatif"}" aria-label="Total payé"><span class="s">€</span></span></div>
-      <span class="s">${t.total != null ? "Total indiqué : il va dans le budget." : sumInc ? "Sans total, le budget utilise les prix indiqués ou estimés (derniers prix connus)." : "Facultatif : indiquez un total ou des prix pour le budget."}</span>` : `<div class="row-between"><span class="label">Total du ticket</span><strong class="h">${euro(t.total)}</strong></div>
+      <span class="s">${t.total != null ? "Total indiqué : il va dans le budget." : sumInc ? "Sans total, le budget utilise les prix indiqués ou estimés (derniers prix connus)." : "Facultatif : indiquez un total ou des prix pour le budget."}</span>` : `<div class="row-between"><span class="label">Total</span><span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:86px;border:1px solid var(--border);font-size:16px" inputmode="decimal" data-tktotal value="${t.total != null ? fmtQ(t.total) : ""}" aria-label="Total"><span class="s">€</span></span></div>
+      ${t.readTotal != null && Math.abs((t.total || 0) - t.readTotal) > 0.009 ? `<span class="s">Total lu sur le ticket : ${euro(t.readTotal)} · mis à jour selon les articles gardés.</span>` : ""}
       ${Math.abs(sumInc - t.total) > 0.05 ? `<span class="s warn">Somme des lignes lues : ${euro(sumInc)}. Une ligne a peut-être été mal lue : vérifiez ou rescannez.</span>` : `<span class="s" style="color:var(--mint-ink);font-weight:700">Toutes les lignes correspondent au total.</span>`}
     `}
     </section>
@@ -2170,7 +2171,16 @@ app.addEventListener("click", (e) => {
     case "tk-cat": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { l.newCat = v; applyEstimate(l); render(); } break; }
     case "tk-date": { const l = ui.tk?.lines?.[Number(t.dataset.i)]; if (l) { const dd = new Date(); dd.setDate(dd.getDate() + Number(v)); l.expiry = localDate(dd); l.dateText = frDate(l.expiry); l.estimated = false; render(); } break; }
     case "tk-go": ticketGo(); break;
-    case "tk-del": { const i = Number(t.dataset.i); if (ui.tk?.lines?.[i]) { ui.tk.lines.splice(i, 1); render(); } break; }
+    case "tk-del": {
+      const i = Number(t.dataset.i);
+      if (ui.tk?.lines?.[i]) {
+        ui.tk.lines.splice(i, 1);
+        // Le total suit les articles gardés (sauf dictée sans prix : il reste estimé automatiquement)
+        if (ui.tk.source !== "voice" || ui.tk.total != null) ui.tk.total = Math.round(ui.tk.lines.reduce((n, l) => n + (lineCost(l) || 0), 0) * 100) / 100;
+        render();
+      }
+      break;
+    }
     case "bud-manual": ui.budgetManual = ui.budgetManual ? null : { store: "", total: "", cat: "alim", date: E.todayIso() }; render(); break;
     case "bm-cat": if (ui.budgetManual) { ui.budgetManual.cat = v; render(); } break;
     case "bm-save": {
