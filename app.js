@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.8";
+const APP_VERSION = "2.6.9";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -996,6 +996,7 @@ function runQaGo() {
   qaBusy = Date.now();
   const el = document.getElementById("qa-text");
   if (el) { ui.qa.text = el.value; el.blur(); }
+  const btn = document.querySelector('[data-act="qa-go"]'); if (btn) btn.textContent = "Analyse en cours…";
   quickAddGo().catch((e) => { console.error(e); showToast("Erreur : " + (e?.message || e)); render(); });
 }
 document.addEventListener("touchend", (e) => {
@@ -1729,7 +1730,8 @@ function stockAmount(line, p) {
 async function prepareLines(items, storeName, storeCat) {
   const keys = items.map((it) => lineKey(storeName || "dictee", it));
   let mem = {};
-  try { mem = await store.getReceiptMap(keys); } catch {}
+  // Réseau faible : on n'attend pas la mémoire des tickets plus de 2 s.
+  try { mem = await Promise.race([store.getReceiptMap(keys), new Promise((res) => setTimeout(() => res({}), 2000))]); } catch {}
   return items.map((it, i) => {
     const byEan = it.ean ? products.find((p) => p.barcode === it.ean) : null;
     const known = mem[keys[i]] && find(mem[keys[i]].productId);
