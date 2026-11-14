@@ -15,14 +15,14 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.11.0";
+const APP_VERSION = "2.12.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 // Catégories modifiables (meta « categories ») : renommer, ajouter, réordonner, supprimer si vide.
 function applyCats() {
   const list = meta.categories?.list;
-  const next = Array.isArray(list) && list.length ? [...list].sort((x, y) => (x.order ?? 0) - (y.order ?? 0)).map((c) => ({ id: c.id, name: c.name })) : DEFAULT_CATS.map((c) => ({ ...c }));
+  const next = Array.isArray(list) && list.length ? [...list].sort((x, y) => (x.order ?? 0) - (y.order ?? 0)).map((c) => ({ id: c.id, name: c.name, icon: c.icon || "", color: c.color || "" })) : DEFAULT_CATS.map((c) => ({ ...c }));
   CATS.splice(0, CATS.length, ...next);
   for (const k of Object.keys(CAT)) delete CAT[k];
   for (const c of CATS) CAT[c.id] = c;
@@ -49,7 +49,38 @@ const I = {
   chat: (s) => svg('<path d="M5 20v-9L4 4l5 3h6l5-3-1 7v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M9.5 13h.01M14.5 13h.01M11 16.5h2"/>', s),
   share: (s) => svg('<path d="M12 15V3M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>', s, 2),
 };
-const catIcon = (id, size = 24) => (I[id] || I.cupboard)(size);
+// Icônes proposées pour les catégories (traits simples, 24×24).
+const CAT_ICONS = {
+  alim: ["Alimentaire", '<path d="M4 10h16l-1.5 9a2 2 0 0 1-2 1.7h-9a2 2 0 0 1-2-1.7z"/><path d="M8 10l4-6 4 6"/>'],
+  frais: ["Frais", '<rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M6 10h12M9 6v2M9 13v3"/>'],
+  surgeles: ["Surgelés", '<path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9M9 4.5l3 2 3-2M9 19.5l3-2 3 2"/>'],
+  fruits: ["Fruits et légumes", '<path d="M12 7c-4-2-8 1-7 6 1 5 4 8 7 7 3 1 6-2 7-7 1-5-3-8-7-6z"/><path d="M12 7c0-2 1-3.5 3-4"/>'],
+  epicerie: ["Épicerie", '<path d="M7 3h10v4l2 3v11H5V10l2-3z"/><path d="M5 10h14M9 14h6"/>'],
+  boissons: ["Boissons", '<path d="M9 2h6M10 2v4l-3 4v11h10V10l-3-4V2"/><path d="M7 14h10"/>'],
+  cave: ["Cave et vins", '<path d="M9 2h6v5c0 3-1.5 4.5-3 4.5S9 10 9 7z"/><path d="M12 11.5V20M8 21h8"/>'],
+  petitdej: ["Petit-déjeuner", '<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 2v4M12 2v4"/>'],
+  pharma: ["Pharmacie", '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8v8M8 12h8"/>'],
+  hyg: ["Hygiène", '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'],
+  beaute: ["Beauté", '<rect x="9" y="9" width="6" height="12" rx="1.5"/><path d="M10 9V5l4-2v6"/>'],
+  entretien: ["Entretien", '<path d="M8 8h6l2 3v10H6V11z"/><path d="M10 8V4h4l3 1M14 4v4"/>'],
+  linge: ["Linge et lessive", '<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="4.5"/><path d="M7 6.5h2"/>'],
+  papier: ["Papier et essuie-tout", '<ellipse cx="9" cy="7" rx="5" ry="3"/><path d="M4 7v10c0 1.7 2.2 3 5 3h11V7"/><circle cx="9" cy="7" r="1"/>'],
+  bebe: ["Bébé", '<path d="M9 3h6v3H9z"/><path d="M8 6h8l1 4v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-9z"/><path d="M7 12h10"/>'],
+  chat: ["Chat", '<path d="M5 20v-9L4 4l5 3h6l5-3-1 7v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M9.5 13h.01M14.5 13h.01M11 16.5h2"/>'],
+  chien: ["Chien", '<path d="M6 9 4 5l4 1h8l4-1-2 4v8a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><path d="M10 12h.01M14 12h.01M11 15.5h2"/>'],
+  bricolage: ["Bricolage", '<path d="M14 6l4-3 3 3-3 4z"/><path d="M15.5 8.5 5 19a1.4 1.4 0 0 1-2-2L13.5 6.5"/>'],
+  bureau: ["Bureau et papeterie", '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>'],
+  jardin: ["Jardin et plantes", '<path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 5-3 7-8 7zM12 14c0-3-2.5-5-7-5 0 4 2.5 5 7 5z"/>'],
+  piles: ["Piles et ampoules", '<rect x="7" y="5" width="10" height="16" rx="2"/><path d="M10 2h4v3M10 12h4M12 10v4"/>'],
+  autre: ["Autre", '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M12 3v18M9.5 11v2M14.5 11v2"/>'],
+};
+const CAT_COLORS_CLS = ["alim", "pharma", "hyg", "chat"];
+const catIcon = (id, size = 24) => { const c = CAT[id]; const key = (c && c.icon) || id; return CAT_ICONS[key] ? svg(CAT_ICONS[key][1], size) : (I[id] || I.cupboard)(size); };
+const catCls = (id) => { const c = CAT[id]; return `c-${(c && c.color) || (CAT_COLORS_CLS.includes(id) ? id : "plain")}`; };
+// Catégories courantes proposées à l'ajout (nom, icône, couleur).
+const CAT_SUGGEST = [["Frais", "frais", "pharma"], ["Surgelés", "surgeles", "pharma"], ["Fruits et légumes", "fruits", "alim"], ["Épicerie", "epicerie", "chat"], ["Boissons", "boissons", "pharma"],
+  ["Cave et vins", "cave", "hyg"], ["Petit-déjeuner", "petitdej", "chat"], ["Entretien", "entretien", "pharma"], ["Linge et lessive", "linge", "pharma"], ["Papier et essuie-tout", "papier", "hyg"],
+  ["Beauté", "beaute", "hyg"], ["Bébé", "bebe", "hyg"], ["Chien", "chien", "chat"], ["Bricolage", "bricolage", "chat"], ["Bureau et papeterie", "bureau", "alim"], ["Jardin et plantes", "jardin", "alim"], ["Piles et ampoules", "piles", "chat"]];
 
 // ───────────────────────── Outils ─────────────────────────
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -377,7 +408,7 @@ function catGrid() {
         ? `<span class="alert">${plural(low, "stock bas", "stocks bas")}</span>`
         : `<span class="ok">Tout est en ordre</span>`;
     return `<a class="card cat-card" href="#/placard/${c.id}">
-      <span class="cat-ico c-${c.id}">${catIcon(c.id)}</span>
+      <span class="cat-ico ${catCls(c.id)}">${catIcon(c.id)}</span>
       <span><span class="name" style="display:block">${c.name}</span><span class="sub">${plural(n, "article", "articles")}</span></span>
       ${line}
     </a>`;
@@ -386,7 +417,7 @@ function catGrid() {
 
 function productRowCompact(p) {
   return `<div class="list-row">
-    <span class="cat-ico sm c-${p.categoryId}">${catIcon(p.categoryId, 20)}</span>
+    <span class="cat-ico sm ${catCls(p.categoryId)}">${catIcon(p.categoryId, 20)}</span>
     <a class="grow" href="#/produit/${p.id}" style="text-decoration:none;color:inherit">
       <span class="t">${esc(p.name)}</span>
       <span class="s">${CAT[p.categoryId]?.name || ""} · ${fmtQ(qty(p))} ${esc(unitLabel(p))}</span>
@@ -519,7 +550,7 @@ function viewPlacard(catId) {
   return `<main class="screen">
     <div class="top">
       <a class="icon-btn" href="#/" aria-label="Retour à l’accueil">${I.back(22)}</a>
-      <span class="cat-ico c-${c.id}">${catIcon(c.id)}</span>
+      <span class="cat-ico ${catCls(c.id)}">${catIcon(c.id)}</span>
       <div class="grow"><h1 style="font-size:calc(28px * var(--fs))">${c.name}</h1>
         <span class="sub">${plural(all.filter((p) => qty(p) > 0).length, "article", "articles")} · ${lows ? plural(lows, "stock bas", "stocks bas") : "aucun stock bas"}</span></div>
     </div>
@@ -655,7 +686,7 @@ function viewAlertes() {
   const nDates = groups.reduce((n, g) => n + g.rows.length, 0);
   const lows = products.filter(isLow).sort(byName);
   const row = (p, act, label, warn) => `<div class="list-row">
-    <span class="cat-ico sm c-${p.categoryId}">${catIcon(p.categoryId, 20)}</span>
+    <span class="cat-ico sm ${catCls(p.categoryId)}">${catIcon(p.categoryId, 20)}</span>
     <a class="grow" href="#/produit/${p.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(p.name)}</span><span class="s${warn ? " warn" : ""}">${act === "inc" ? `${qty(p)} ${esc(unitLabel(p))} · seuil ${Number(p.minQuantity) || 0}` : dateLabel(p)}</span></a>
     <button class="out-btn" data-act="${act}" data-id="${p.id}">${label}</button>
   </div>`;
@@ -860,17 +891,28 @@ function viewCategories() {
     <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Catégories</h1><span class="sub">Ajouter, renommer, réordonner</span></div></div>
     <div class="card" style="padding:4px 10px">${CATS.map((c, i) => {
       const used = products.some((p) => p.categoryId === c.id);
-      return `<div class="list-row" style="padding-left:4px"><span class="cat-ico sm c-${c.id}">${catIcon(c.id, 18)}</span>
+      return `${ui.catPick === c.id ? catPicker(c) : ""}<div class="list-row" style="padding-left:4px"><button class="cat-ico sm ${catCls(c.id)}" style="border:0" data-act="cat-pick" data-v="${c.id}" aria-label="Changer l’icône de ${esc(c.name)}">${catIcon(c.id, 18)}</button>
         <input class="input sm" style="flex:1" data-catname="${c.id}" value="${esc(c.name)}" aria-label="Nom de la catégorie">
         <button class="sc-x" data-act="cat-up" data-v="${c.id}" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
         <button class="sc-x" data-act="cat-del" data-v="${c.id}" aria-label="Supprimer ${esc(c.name)}" ${used ? 'style="opacity:.35"' : ""}>×</button></div>`;
     }).join("")}</div>
     <form id="cat-add" class="search" style="padding-right:6px"><input id="cat-new" placeholder="Nouvelle catégorie (ex. Entretien, Bébé)" autocomplete="off" aria-label="Nouvelle catégorie">
       <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>
-    <p class="hint">Une catégorie qui contient des produits ne peut pas être supprimée : changez d’abord la catégorie de ces produits dans leur fiche.</p>
+    <p class="hint">Touchez l’icône d’une catégorie pour la changer. Une catégorie qui contient des produits ne peut pas être supprimée.</p>
+    ${CAT_SUGGEST.filter(([n]) => !CATS.some((c) => c.name.toLowerCase() === n.toLowerCase())).length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Catégories courantes · un appui pour ajouter</h2>
+      <div class="chips">${CAT_SUGGEST.filter(([n]) => !CATS.some((c) => c.name.toLowerCase() === n.toLowerCase())).map(([n, ic, col]) => `<button class="chip sm" data-act="cat-suggest" data-v="${esc(n)}" style="display:inline-flex;align-items:center;gap:6px"><span class="${"c-" + col}" style="display:inline-flex;border-radius:8px;padding:2px">${svg(CAT_ICONS[ic][1], 16)}</span>${esc(n)}</button>`).join("")}</div></section>` : ""}
   </main><div class="cta-bar"><button class="cta" data-act="cat-save">Enregistrer les noms</button></div>`;
 }
-const catList = () => CATS.map((c, i) => ({ id: c.id, name: c.name, order: i }));
+function catPicker(c) {
+  const colors = [["alim", "Vert"], ["pharma", "Bleu"], ["hyg", "Rose"], ["chat", "Ambre"], ["plain", "Violet"]];
+  return `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px;margin:6px 0">
+    <span class="eyebrow">Icône de « ${esc(c.name)} »</span>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">${Object.entries(CAT_ICONS).map(([k, [lab, path]]) => `<button class="cat-ico sm ${catCls(c.id)}" style="border:${(c.icon || c.id) === k ? "2px solid var(--primary)" : "0"};width:44px;height:44px" data-act="cat-icon" data-id="${c.id}" data-v="${k}" aria-label="${esc(lab)}" title="${esc(lab)}">${svg(path, 20)}</button>`).join("")}</div>
+    <span class="eyebrow">Couleur</span>
+    <div class="chips">${colors.map(([k, lab]) => `<button class="chip sm" data-act="cat-color" data-id="${c.id}" data-v="${k}" aria-pressed="${catCls(c.id) === "c-" + k}" style="display:inline-flex;align-items:center;gap:6px"><span class="c-${k}" style="width:14px;height:14px;border-radius:7px;display:inline-block"></span>${lab}</button>`).join("")}</div>
+    <button class="link-btn" data-act="cat-pick" data-v="">Fermer</button></div>`;
+}
+const catList = () => CATS.map((c, i) => ({ id: c.id, name: c.name, order: i, icon: c.icon || "", color: c.color || "" }));
 function viewLieux() {
   const locs = locations();
   return `<main class="screen no-nav">${offlineBanner()}
@@ -2310,6 +2352,14 @@ app.addEventListener("click", (e) => {
       if (CATS.length <= 1) break;
       store.setMeta("categories", { list: catList().filter((c) => c.id !== v) }); break;
     }
+    case "cat-pick": ui.catPick = ui.catPick === v ? null : v; render(); break;
+    case "cat-icon": { const list = catList().map((c) => (c.id === id ? { ...c, icon: v } : c)); store.setMeta("categories", { list }); break; }
+    case "cat-color": { const list = catList().map((c) => (c.id === id ? { ...c, color: v } : c)); store.setMeta("categories", { list }); break; }
+    case "cat-suggest": {
+      const s = CAT_SUGGEST.find(([n]) => n === v); if (!s) break;
+      store.setMeta("categories", { list: [...catList(), { id: "cat_" + Date.now().toString(36), name: s[0], icon: s[1], color: s[2], order: CATS.length }] });
+      showToast(`Catégorie « ${s[0]} » ajoutée`); break;
+    }
     case "cat-save": {
       const list = catList().map((c) => { const el = app.querySelector(`[data-catname="${c.id}"]`); return { ...c, name: (el && el.value.trim()) || c.name }; });
       store.setMeta("categories", { list }); showToast("Catégories enregistrées"); go("#/placards"); break;
@@ -2570,6 +2620,7 @@ async function start() {
     units: UNITS,
     plural: PLURAL,
     catIcon: (id) => catIcon(id),
+    catCls: (id) => catCls(id),
     onClose: (hash) => go(hash || "#/"),
     onError: (m) => { showToast(m); render(); },
   });

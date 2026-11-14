@@ -401,7 +401,7 @@ function sheetHtml() {
       const stock = qtyOf(p);
       const cat = ctx.cats.find((c) => c.id === p.categoryId);
       return `<div class="sc-sheet"><div class="sc-handle"></div>
-        <div class="sc-head"><span class="cat-ico c-${p.categoryId}">${ctx.catIcon(p.categoryId)}</span>
+        <div class="sc-head"><span class="cat-ico ${ctx.catCls ? ctx.catCls(p.categoryId) : "c-" + p.categoryId}">${ctx.catIcon(p.categoryId)}</span>
           <div class="sc-title"><span class="sub">${cat ? cat.name : ""}</span><strong>${esc(p.name)}</strong></div></div>
         <p class="sc-stock ${stock === 0 ? "none" : ""}">${stock === 0 ? "Plus rien à la maison" : `Il en reste ${fmtQ(stock)} ${esc((stock > 1 ? ctx.plural[p.unit] : p.unit) || "")} à la maison`}</p>
         ${p.expiry ? `<p class="sc-note">Date la plus proche : ${frDate(p.expiry)}</p>` : ""}
@@ -424,7 +424,7 @@ function sheetHtml() {
     const q = parseQ(form.quantity) || 1;
     return `<div class="sc-sheet"><div class="sc-handle"></div>
       <div class="sc-head">
-        <span class="cat-ico c-${p.categoryId}">${ctx.catIcon(p.categoryId)}</span>
+        <span class="cat-ico ${ctx.catCls ? ctx.catCls(p.categoryId) : "c-" + p.categoryId}">${ctx.catIcon(p.categoryId)}</span>
         <div class="sc-title"><span class="sc-ok">${ICON.check} Dans vos placards</span>
           <strong>${esc(p.name)}</strong>
           <span class="sub">${cat ? cat.name : ""}${p.detail ? " · " + esc(p.detail) : ""} · ${fmtQ(stock)} en stock</span></div>
