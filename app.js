@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.7.3";
+const APP_VERSION = "2.7.4";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
@@ -1003,6 +1003,21 @@ document.addEventListener("touchend", (e) => {
   const b = e.target.closest && e.target.closest('[data-act="qa-go"]');
   if (b) { e.preventDefault(); runQaGo(); }
 }, { passive: false });
+// iPhone : quand le clavier s'ouvre puis se ferme, les barres fixes (navigation, bouton du bas) restent parfois
+// coincées au milieu de l'écran. On les masque pendant la saisie et on force le recalage à la fermeture du clavier.
+const isField = (el) => el && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !["checkbox", "radio", "file", "button", "submit"].includes(el.type)) || el.tagName === "SELECT");
+document.addEventListener("focusin", (e) => { if (isField(e.target)) document.body.classList.add("kb-open"); });
+document.addEventListener("focusout", (e) => {
+  if (!isField(e.target)) return;
+  setTimeout(() => {
+    if (isField(document.activeElement)) return;
+    document.body.classList.remove("kb-open");
+    window.scrollTo(window.scrollX, window.scrollY); // recalage iOS
+  }, 120);
+});
+if (window.visualViewport) window.visualViewport.addEventListener("resize", () => {
+  if (!isField(document.activeElement)) { document.body.classList.remove("kb-open"); window.scrollTo(window.scrollX, window.scrollY); }
+});
 window.addEventListener("error", (e) => { try { showToast("Erreur : " + e.message); render(); } catch {} });
 window.addEventListener("unhandledrejection", (e) => { try { const m = e.reason?.message || String(e.reason || ""); if (m && !/abort|network|fetch/i.test(m)) { showToast("Erreur : " + m); render(); } } catch {} });
 async function quickAddGo() {
