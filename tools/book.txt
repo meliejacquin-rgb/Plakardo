@@ -723,6 +723,7 @@ Porc caramel simplifié | Plat | Vietnamien | 15 | 20 | Moyenne
 
 Couscous végétarien express | Plat | Maghrébin | 15 | 25 | Facile
 @id b-couscous-vegetarien-express
+@img img/recettes/b-couscous-vegetarien-express.webp
 - semoule: 160 g
 - pois chiches: 200 g
 - carotte: 2 pièce
