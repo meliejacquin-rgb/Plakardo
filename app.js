@@ -346,7 +346,7 @@ function nav(current) {
   return `<nav class="nav" aria-label="Navigation principale">
     ${link("#/", "accueil", "Accueil", I.home(24))}
     ${link("#/placards", "placards", "Stocks", I.cupboard(24))}
-    <a href="#/scan" class="scan" aria-label="Scanner un produit" ${current === "scan" ? 'aria-current="page"' : ""}>${I.scan(28)}</a>
+    <a href="#/ajouter" class="scan" aria-label="Ajouter des produits" ${current === "ajouter" ? 'aria-current="page"' : ""}>${I.plus(30)}</a>
     ${link("#/recettes", "recettes", "Recettes", svg('<path d="M6 3v8a3 3 0 0 0 3 3v7M9 3v6M12 3v8a3 3 0 0 1-3 3"/><path d="M17 21V3c-2 1-3 4-3 8h3"/>', 24))}
     <a href="#/courses" ${current === "courses" ? 'aria-current="page"' : ""} style="position:relative">${svg('<path d="M4 5h2l2 11h10l2-8H7"/><circle cx="10" cy="20" r="1.2"/><circle cx="17" cy="20" r="1.2"/>', 24)}Courses${nShop ? `<span class="badge" style="position:absolute;top:2px;right:calc(50% - 22px)">${nShop}</span>` : ""}</a>
   </nav>`;
@@ -926,8 +926,8 @@ function viewAjouter() {
     }
     return out.slice(0, 5);
   })();
-  return `<main class="screen no-nav">${offlineBanner()}
-    <div class="top"><a class="icon-btn" href="javascript:history.back()" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Ajouter des produits</h1></div>
+  return `<main class="screen">${offlineBanner()}
+    <div class="top"><div class="grow"><h1 style="font-size:28px">Ajouter des produits</h1></div>
       <a class="icon-btn" href="#/ajout" aria-label="Nouveau produit (fiche complète)">${I.plus(20)}</a></div>
     <div class="add-tiles">${tile("photo", "Photo")}${tile("ticket", "Ticket")}${tile("mic", "Voix")}${tile("barcode", "Code-barres")}</div>
     <section class="card add-panel">${panel}
@@ -937,7 +937,7 @@ function viewAjouter() {
     <label class="search">${I.search(18)}<input id="add-search" type="search" data-addsearch placeholder="Ajout rapide : rechercher un produit…" value="${esc(ui.addSearch)}" autocomplete="off" aria-label="Rechercher un produit"></label>
     <div id="add-results" style="display:flex;flex-direction:column;gap:10px">${addResults(hits, q)}</div>
     ${rec.length ? `<section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Ajouts fréquents</h2><div class="chips">${rec.map(({ p, d }) => `<button class="chip sm" style="background:var(--mint-soft);color:var(--mint-ink);border:0;font-weight:700" data-act="qadd" data-id="${p.id}" data-v="${d}">${esc(p.name)} +${fmtQ(d)} ${esc(p.unit || "")}</button>`).join("")}</div></section>` : ""}
-  </main>`;
+  </main>${nav("ajouter")}`;
 }
 
 // ---- Dictée ----
@@ -1008,7 +1008,8 @@ async function prepImage(file) {
 async function ocrTicket(files) {
   ui.ocr = { msg: "Préparation de la lecture… (la première fois, 10 à 20 s)" }; render();
   try {
-    const T = await import("https://fastly.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
+    const M = await import("https://fastly.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");
+    const T = M.createWorker ? M : M.default;
     const worker = await T.createWorker(["fra", "deu"], 1, { logger: (m) => {
       if (m.status === "recognizing text") { ui.ocr = { msg: `Lecture du ticket… ${Math.round(m.progress * 100)} %` }; const el = document.querySelector(".ok-box"); if (el) el.textContent = ui.ocr.msg; }
     } });
