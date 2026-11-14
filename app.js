@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.12.0";
+const APP_VERSION = "2.12.1";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -2547,7 +2547,9 @@ app.addEventListener("submit", async (e) => {
     const name = (document.getElementById("cat-new")?.value || "").trim();
     if (!name) return;
     if (CATS.some((c) => c.name.toLowerCase() === name.toLowerCase())) { showToast("Cette catégorie existe déjà"); render(); return; }
-    store.setMeta("categories", { list: [...catList(), { id: "cat_" + Date.now().toString(36), name, order: CATS.length }] });
+    const nid = "cat_" + Date.now().toString(36);
+    ui.catPick = nid; // on propose tout de suite de choisir l'icône
+    store.setMeta("categories", { list: [...catList(), { id: nid, name, icon: "autre", color: "plain", order: CATS.length }] });
     return;
   }
   if (e.target.id === "loc-add") {
