@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.14.13";
+const APP_VERSION = "2.15.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -173,6 +173,7 @@ const find = (id) => products.find((p) => p.id === id);
 const locations = () => [...((meta.locations && meta.locations.list) || E.DEFAULT_LOCATIONS)].sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
 const locName = (id) => (locations().find((l) => l.id === id) || { name: id }).name;
 const prefs = () => meta.prefs || { allergies: [], dislikes: [], equipment: [] };
+const defPortions = () => Math.max(1, Number(meta.prefs?.portions) || 2);
 function canWrite() {
   if (online || isDemo) return true;
   showToast("Hors ligne : action impossible pour le moment");
@@ -1387,6 +1388,7 @@ function filteredBook(q = "") {
 }
 function viewRecettes() {
   const f = ui.recFilters;
+  f.portions = defPortions();
   const q = ui.bookSearch || "";
   const prio = E.priorityList(products.filter((p) => p.categoryId === "alim")).slice(0, 4);
   // Évaluation de tout le livre une seule fois (score + manquants), classée selon le stock.
@@ -1435,6 +1437,9 @@ function viewRecettes() {
   }
   return `<main class="screen">${offlineBanner()}
     <div class="top"><div class="grow"><h1>Recettes</h1></div>
+      <div class="qbox port-box" aria-label="Nombre de personnes"><button class="round-btn" data-act="rf-port" data-v="-1" aria-label="Moins de personnes">${I.minus(12)}</button>
+        <span class="port-n">${svg('<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M15 14.5c3 0 6 2 6 5.5"/>', 16)} ${defPortions()}</span>
+        <button class="round-btn" data-act="rf-port" data-v="1" aria-label="Plus de personnes">${I.plus(12)}</button></div>
       <a class="icon-btn" href="#/menu" aria-label="Menu de la semaine">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3"/>', 20)}</a></div>
     ${top}
     ${week}
@@ -1505,7 +1510,7 @@ function viewImport(r) {
 function viewRecette(id) {
   const r = findRecipe(id);
   if (!r) return `<main class="screen"><div class="top"><a class="icon-btn" href="#/recettes" aria-label="Retour">${I.back(22)}</a><h1 style="font-size:24px">Recette introuvable</h1></div><p class="empty-state">Elle a peut-être été retirée de vos recettes.</p></main>`;
-  const portions = ui.recPortions[r.id] || r.portions;
+  const portions = ui.recPortions[r.id] || defPortions();
   const ings = E.scaleRecipe(r, portions);
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
   const fav = recipes.some((x) => x.id === r.id && isFav(x));
@@ -1526,7 +1531,7 @@ function viewRecette(id) {
       <span><strong class="h">${r.prepMin || 0}</strong><br><span class="s">min prép.</span></span>
       <span><strong class="h">${r.cookMin || 0}</strong><br><span class="s">min cuisson</span></span>
       <span><span class="qbox" style="padding:2px;display:inline-flex"><button class="round-btn" style="width:32px;height:32px;background:var(--soft);color:var(--ink)" data-act="rec-port" data-id="${esc(r.id)}" data-v="-1" aria-label="Moins de portions">${I.minus(12)}</button>
-        <strong class="h" style="min-width:26px;display:inline-block">${portions}</strong><button class="round-btn" style="width:32px;height:32px;background:var(--primary);color:var(--primary-ink)" data-act="rec-port" data-id="${esc(r.id)}" data-v="1" aria-label="Plus de portions">${I.plus(12)}</button></span><br><span class="s">portions</span></span></div>
+        <strong class="h" style="min-width:26px;display:inline-block">${portions}</strong><button class="round-btn" style="width:32px;height:32px;background:var(--primary);color:var(--primary-ink)" data-act="rec-port" data-id="${esc(r.id)}" data-v="1" aria-label="Plus de portions">${I.plus(12)}</button></span><br><span class="s">personnes</span></span></div>
     ${allergyHit.length ? `<div class="card" style="padding:12px;border-color:var(--warn)"><span class="err">Attention allergie : ${esc(allergyHit.join(", "))}</span></div>` : ""}
     <section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">Ingrédients</h2><div class="card list">${ings.map((g, i) => {
       const s = states[i];
@@ -1556,7 +1561,7 @@ async function ensureSaved(r) {
   if (route().name === "recette" && route().arg === old) location.replace(`#/recette/${encodeURIComponent(id)}`);
   return id;
 }
-function addNeedsToShopping(needLines, sourceLabel) {
+function addNeedsToShopping(needLines, sourceLabel, fromMenu = false) {
   let n = 0;
   for (const L of needLines) {
     if (L.mode !== "buy" && L.mode !== "suggest") continue;
@@ -1565,18 +1570,18 @@ function addNeedsToShopping(needLines, sourceLabel) {
     const sources = L.sources || [sourceLabel];
     if (L.product) {
       const cur = shopping.find((d) => d.id === `p_${L.product.id}`);
-      store.setShopping(`p_${L.product.id}`, { productId: L.product.id, forced: true, qty: q, unit: L.unit, state: "todo", checked: false, sources: [...new Set([...(cur?.state === "todo" ? cur.sources || [] : []), ...sources])] });
+      store.setShopping(`p_${L.product.id}`, { productId: L.product.id, forced: true, qty: q, unit: L.unit, state: "todo", checked: false, ...(fromMenu ? { fromMenu: true, sources } : { sources: [...new Set([...(cur?.state === "todo" ? cur.sources || [] : []), ...sources])] }) });
     } else {
       const dup = shopping.find((d) => !d.productId && (d.state || "todo") === "todo" && (d.label || "").toLowerCase() === L.name.toLowerCase());
-      if (dup) store.setShopping(dup.id, { sources: [...new Set([...(dup.sources || []), ...sources])] });
-      else store.addShopping({ label: L.name, qty: q || 1, unit: L.unit || "", state: "todo", checked: false, sources });
+      if (dup) store.setShopping(dup.id, fromMenu ? { qty: q || 1, unit: L.unit || "", fromMenu: true, sources } : { sources: [...new Set([...(dup.sources || []), ...sources])] });
+      else store.addShopping({ label: L.name, qty: q || 1, unit: L.unit || "", state: "todo", checked: false, sources, ...(fromMenu ? { fromMenu: true } : {}) });
     }
     n += 1;
   }
   return n;
 }
 function cookFromRecipe(r) {
-  const portions = ui.recPortions[r.id] || r.portions;
+  const portions = ui.recPortions[r.id] || defPortions();
   const byId = Object.fromEntries(products.map((p) => [p.id, p]));
   ui.cook = [];
   for (const g of E.scaleRecipe(r, portions)) {
@@ -1593,7 +1598,28 @@ function cookFromRecipe(r) {
 function menuEntries() {
   return (meta.menu?.entries || []).map((e, i) => ({ ...e, i, recipe: findRecipe(e.recipeId) })).filter((e) => e.recipe);
 }
-function setMenu(entries) { return store.setMeta("menu", { entries: entries.map(({ recipeId, portions, day, meal }) => ({ recipeId, portions, day: day || "", meal: meal || "" })) }); }
+function setMenu(entries) {
+  const clean = entries.map(({ recipeId, portions, day, meal }) => ({ recipeId, portions: portions || defPortions(), day: day || "", meal: meal || "" }));
+  const p = store.setMeta("menu", { entries: clean });
+  syncMenuShopping(clean, entries);
+  return p;
+}
+// La liste de courses suit le menu : on ajoute ou met à jour ce qui manque, on retire ce qui n'est plus utile.
+function syncMenuShopping(clean, raw = []) {
+  if (!canWrite()) return 0;
+  const list = clean.map((e, i) => ({ recipe: raw[i]?.recipe || findRecipe(e.recipeId), portions: e.portions })).filter((e) => e.recipe);
+  const needs = E.computeNeeds(list, products).filter((L) => L.mode === "buy" || L.mode === "suggest");
+  const n = addNeedsToShopping(needs, "Menu", true);
+  const keepP = new Set(needs.filter((L) => L.product).map((L) => `p_${L.product.id}`));
+  const keepN = new Set(needs.filter((L) => !L.product).map((L) => L.name.toLowerCase()));
+  for (const d of shopping) {
+    if (!d.fromMenu || (d.state || "todo") !== "todo") continue;
+    if (d.productId ? keepP.has(d.id) : keepN.has((d.label || "").toLowerCase())) continue;
+    if (d.productId) store.setShopping(d.id, { forced: false, fromMenu: false, sources: [] });
+    else store.deleteShopping(d.id);
+  }
+  return n;
+}
 function allInShopping(lines) {
   const todo = shopping.filter((d) => (d.state || (d.checked ? "bought" : "todo")) !== "stored" && d.state !== "cancelled");
   return lines.every((L) => L.product ? todo.some((d) => d.id === `p_${L.product.id}`) : todo.some((d) => !d.productId && (d.label || "").toLowerCase() === L.name.toLowerCase()));
@@ -1604,11 +1630,12 @@ function nextFreeDay() {
   return E.weekDays(7).find((d) => !used.has(d)) || "";
 }
 function addToMenu(r, day) {
-  const list = [...(meta.menu?.entries || []), { recipeId: r.id, portions: ui.recFilters.portions || r.portions || 2, day: day ?? nextFreeDay() }];
+  const list = [...(meta.menu?.entries || []), { recipeId: r.id, portions: defPortions(), day: day ?? nextFreeDay() }];
   return setMenu(list);
 }
 // Choisir soi-même : favoris ou livre, avec le jour.
 function viewMenuAjout() {
+  ui.recFilters.portions = defPortions();
   const tab = ui.mpTab || (recipes.some(isFav) ? "fav" : "book");
   const day = ui.mpDay ?? nextFreeDay();
   const q = E.normTxt(ui.mpSearch || "");
@@ -1645,11 +1672,14 @@ function viewMenu() {
     ${entries.length ? `<div class="card list">${sortByDay(entries).map((e) => `<div class="list-row">${vignette(e.recipe, 40)}
       <span class="grow" style="display:flex;flex-direction:column;gap:2px;min-width:0">
         <select class="day-sel" data-menuday="${e.i}" aria-label="Jour">${["", ...E.DAYS].map((dname) => `<option value="${dname}" ${dname === (e.day || "") ? "selected" : ""}>${dname || "Sans jour"}</option>`).join("")}</select>
-        <a href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${esc(e.recipe.title)}</span><span class="s" style="display:block">${plural(e.portions, "portion", "portions")}${e.meal ? " · " + esc(e.meal) : ""}</span></a></span>
+        <a href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${esc(e.recipe.title)}</span></a>
+        <span style="display:flex;align-items:center;gap:6px"><button class="round-btn mini" data-act="menu-port" data-i="${e.i}" data-v="-1" aria-label="Moins de portions">${I.minus(10)}</button>
+          <span class="s">${plural(e.portions || defPortions(), "portion", "portions")}${e.meal ? " · " + esc(e.meal) : ""}</span>
+          <button class="round-btn mini" data-act="menu-port" data-i="${e.i}" data-v="1" aria-label="Plus de portions">${I.plus(10)}</button></span></span>
       <button class="sc-x" data-act="menu-swap" data-i="${e.i}" aria-label="Changer cette recette" title="Changer">↻</button>
       <button class="sc-x" data-act="menu-del" data-i="${e.i}" aria-label="Retirer du menu">×</button></div>`).join("")}</div>`
       : `<p class="empty-state">Menu vide. Choisissez vos recettes ci-dessus, ou laissez Plakardo composer la semaine (onglet Recettes).</p>`}
-    ${entries.length ? `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">À acheter (${buy.length})</h2>
+    ${entries.length ? `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">À acheter (${buy.length})</h2><span class="s">La liste de courses suit le menu automatiquement : ajout d’une recette, changement de portions ou retrait.</span>
       ${buy.length ? `<div class="card list">${buy.map(needRow).join("")}</div>` : `<p class="s">Tout est en stock${okN ? ` (${plural(okN, "ingrédient", "ingrédients")})` : ""}.</p>`}
       ${other.length ? `<h2 class="eyebrow">À vérifier (${other.length})</h2><div class="card list">${other.map(needRow).join("")}</div>` : ""}
       <button class="link-btn" data-act="menu-clear">Vider le menu</button></section>` : ""}
@@ -1817,7 +1847,7 @@ async function applyWeek(res) {
   ui.busy = true; render();
   try {
     const order = E.weekDays(7);
-    const port = ui.recFilters.portions || 2;
+    const port = defPortions();
     const list = [...res.recipes].sort((x, y) => (order.indexOf(x.day) + 9) % 9 - (order.indexOf(y.day) + 9) % 9);
     const keep = new Set(recipes.filter(isFav).map((r) => r.id));
     const old = (meta.menu?.entries || []).map((e2) => e2.recipeId).filter((id) => !keep.has(id));
@@ -1828,8 +1858,7 @@ async function applyWeek(res) {
     }
     await setMenu(entries);
     for (const id of old) store.deleteRecipe(id);
-    const needs = E.computeNeeds(entries.map((e2) => ({ recipe: e2.recipe, portions: e2.portions })), products);
-    const n = addNeedsToShopping(needs, "Menu");
+    const n = shopping.filter((d) => d.fromMenu && (d.state || "todo") === "todo").length;
     ui.recParsed = res.errors.length ? { recipes: [], errors: res.errors, blocage: null } : null; saveParsed();
     showToast(`Menu prêt : ${plural(entries.length, "recette", "recettes")}${n ? ` · ${plural(n, "article ajouté", "articles ajoutés")} aux courses` : ""}`);
     if (route().name !== "import") go("#/menu");
@@ -1864,10 +1893,9 @@ async function composeWeek({ replaceIndex = null } = {}) {
       plan.forEach((x, i) => { x.day = days[Math.floor(i / perDay)] || ""; x.meal = perDay === 2 ? (i % 2 ? "Dîner" : "Déjeuner") : ""; });
     }
     if (!plan.length) { showToast("Aucune recette ne correspond aux filtres"); return; }
-    const entries = plan.map((x) => ({ recipeId: x.recipe.id, portions: f.portions || 2, day: x.day, meal: x.meal }));
+    const entries = plan.map((x) => ({ recipeId: x.recipe.id, portions: defPortions(), day: x.day, meal: x.meal, recipe: x.recipe }));
+    const n = E.computeNeeds(entries, products).filter((L) => L.mode === "buy" || L.mode === "suggest").length;
     await setMenu(entries);
-    const needs = E.computeNeeds(plan.map((x) => ({ recipe: x.recipe, portions: f.portions || 2 })), products);
-    const n = addNeedsToShopping(needs, "Menu");
     showToast(`Menu prêt : ${plural(plan.length, "recette", "recettes")}${n ? ` · ${plural(n, "article ajouté", "articles ajoutés")} aux courses` : ""}`);
     go("#/menu");
   } catch (e) { showToast(e?.message || "Impossible de composer le menu"); }
@@ -2363,7 +2391,11 @@ app.addEventListener("click", (e) => {
     case "op-undo": undoOp(v); break;
     case "recmode": ui.recMode = v; render(); break;
     case "rf": ui.recFilters[field] = ["maxTime", "days", "prepMax", "cookMax"].includes(field) && v ? Number(v) : v; render(); break;
-    case "rf-port": ui.recFilters.portions = Math.max(1, Math.min(12, ui.recFilters.portions + Number(v))); render(); break;
+    case "rf-port": {
+      const n = Math.max(1, Math.min(12, defPortions() + Number(v)));
+      ui.recFilters.portions = n; ui.recPortions = {};
+      store.setMeta("prefs", { ...prefs(), portions: n }); render(); break;
+    }
     case "rf-favonly": ui.recFilters.favOnly = !ui.recFilters.favOnly; if (ui.recFilters.favOnly && !recipes.some(isFav)) showToast("Aucun favori pour l’instant : touchez ☆ sur une recette"); render(); break;
     case "rf-toggle": ui.recFiltOpen = !ui.recFiltOpen; render(); break;
     case "rf-reset": Object.assign(ui.recFilters, { theme: "", prepMax: "", cookMax: "", difficulty: "", maxTime: "", exclude: [] }); render(); break;
@@ -2387,7 +2419,7 @@ app.addEventListener("click", (e) => {
       break;
     case "rec-read": readRecipes(); break;
     case "rec-clear": ui.recParsed = null; saveParsed(); render(); break;
-    case "rec-port": { const r = findRecipe(id); if (r) { ui.recPortions[r.id] = Math.max(1, Math.min(30, (ui.recPortions[r.id] || r.portions) + Number(v))); render(); } break; }
+    case "rec-port": { const r = findRecipe(id); if (r) { ui.recPortions[r.id] = Math.max(1, Math.min(30, (ui.recPortions[r.id] || defPortions()) + Number(v))); render(); } break; }
     case "rec-fav": {
       const r = findRecipe(v); if (!r) break;
       const saved = recipes.find((x) => x.id === r.id);
@@ -2403,13 +2435,13 @@ app.addEventListener("click", (e) => {
     }
     case "rec-shop": {
       const r = findRecipe(v); if (!r) break;
-      const needs = E.computeNeeds([{ recipe: r, portions: ui.recPortions[r.id] || r.portions }], products);
+      const needs = E.computeNeeds([{ recipe: r, portions: ui.recPortions[r.id] || defPortions() }], products);
       const n = addNeedsToShopping(needs, r.title);
       showToast(n ? `${plural(n, "article ajouté", "articles ajoutés")} aux courses` : "Rien à ajouter"); render(); break;
     }
     case "rec-menu": {
       const r = findRecipe(v); if (!r) break;
-      ensureSaved(r).then((nid) => { const day = nextFreeDay(); setMenu([...(meta.menu?.entries || []), { recipeId: nid, portions: ui.recPortions[r.id] || r.portions, day }]); showToast(`Ajoutée au menu${day ? ` pour ${day.toLowerCase()}` : ""}`); render(); });
+      ensureSaved(r).then((nid) => { const day = nextFreeDay(); setMenu([...(meta.menu?.entries || []), { recipeId: nid, portions: ui.recPortions[r.id] || defPortions(), day }]); showToast(`Ajoutée au menu${day ? ` pour ${day.toLowerCase()}` : ""}`); render(); });
       break;
     }
     case "week-make": composeWeek(); break;
@@ -2500,7 +2532,7 @@ app.addEventListener("click", (e) => {
       break;
     }
     case "rec-cook": { const r = findRecipe(v); if (r) cookFromRecipe(r); break; }
-    case "menu-port": { const list = [...(meta.menu?.entries || [])]; const e2 = list[Number(t.dataset.i)]; if (e2) { e2.portions = Math.max(1, (e2.portions || 2) + Number(v)); setMenu(list); } break; }
+    case "menu-port": { const list = [...(meta.menu?.entries || [])]; const e2 = list[Number(t.dataset.i)]; if (e2) { e2.portions = Math.max(1, Math.min(30, (e2.portions || defPortions()) + Number(v))); setMenu(list); } break; }
     case "menu-del": { const list = [...(meta.menu?.entries || [])]; list.splice(Number(t.dataset.i), 1); setMenu(list); break; }
     case "menu-clear": setMenu([]); break;
     case "menu-shop": {
@@ -2521,7 +2553,7 @@ app.addEventListener("click", (e) => {
     case "store-go": storeGo(); break;
     case "prefs-save": {
       const g = (k) => splitList(document.getElementById(`pf-${k}`)?.value);
-      store.setMeta("prefs", { allergies: g("allergies"), dislikes: g("dislikes"), equipment: g("equipment") });
+      store.setMeta("prefs", { ...prefs(), allergies: g("allergies"), dislikes: g("dislikes"), equipment: g("equipment") });
       showToast("Préférences enregistrées"); render(); break;
     }
     case "backup": backup(); break;

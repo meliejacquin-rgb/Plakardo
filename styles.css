@@ -330,3 +330,7 @@ body.kb-open .nav, body.kb-open .cta-bar.over-nav { display: none; }
 .filt-btn .badge { position:absolute; top:-3px; right:-3px; background:var(--warn); color:#fff; font-size:11px; font-weight:800; min-width:18px; height:18px; border-radius:99px; display:grid; place-items:center; }
 .rc-img > img:not([src*="recettes"]) , .rc-img > svg { width:100%; height:100%; }
 .week-mini .chip.sm { padding:6px 10px; min-height:32px; }
+.port-box { display:flex; align-items:center; gap:2px; padding:2px; border-radius:99px; background:var(--surface); border:1px solid var(--line, #e6dff0); }
+.port-box .round-btn { width:30px; height:30px; background:var(--soft); color:var(--ink); }
+.port-n { display:flex; align-items:center; gap:3px; font-weight:800; min-width:36px; justify-content:center; color:var(--primary); }
+.round-btn.mini { width:26px; height:26px; min-height:26px; background:var(--soft); color:var(--ink); }
