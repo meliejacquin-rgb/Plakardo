@@ -707,6 +707,7 @@ Poêlée de haricots blancs à la tomate | Plat | Français | 10 | 20 | Facile
 
 Porc caramel simplifié | Plat | Vietnamien | 15 | 20 | Moyenne
 @id b-porc-caramel-simplifie
+@img img/recettes/b-porc-caramel-simplifie.webp
 - porc: 300 g
 - riz: 140 g
 - oignon: 1 pièce
