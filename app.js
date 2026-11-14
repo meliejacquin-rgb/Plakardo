@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.6.7";
+const APP_VERSION = "2.6.8";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
 const UNITS = ["pièce", "boîte", "flacon", "sachet", "sac", "tube", "g", "kg", "ml", "L"];
@@ -912,14 +912,15 @@ function viewAjouter() {
     panel = `<div class="add-head">${IC.mic(30)}<span><span class="add-title">Dites vos courses</span><span class="add-sub">« Chez Lidl : deux yaourts, un kilo de pommes 2 euros 50, du poulet, total 12 euros »</span></span></div>
       <div class="seg" role="group" style="grid-auto-columns:1fr"><button data-act="qa-target" data-v="stock" aria-pressed="${qa.target === "stock"}">Ranger dans le stock</button><button data-act="qa-target" data-v="courses" aria-pressed="${qa.target === "courses"}">Ajouter aux courses</button></div>
       <button class="mic-btn${ui.listening ? " on" : ""}" data-act="mic">${IC.mic(30)}<span>${ui.listening ? "J’écoute… touchez pour arrêter" : CAN_LIVE_MIC ? "Toucher pour parler" : "Dicter avec le micro du clavier"}</span></button>
+
+      <textarea id="qa-text" class="input" data-qatext rows="3" lang="fr" autocapitalize="sentences" autocorrect="on" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
+      <button class="cta" data-act="qa-go">${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
       <div id="mic-help" class="card" style="padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--soft)" ${ui.micHelp || !CAN_LIVE_MIC ? "" : "hidden"}>
         <span class="t">${CAN_LIVE_MIC ? "La dictée directe n’a rien entendu" : "Dictée avec le clavier de l’iPhone"}</span>
         <span class="s">1. Touchez le bouton ci-dessus : le clavier s’ouvre.<br>2. <strong>Vérifiez que le clavier est en français</strong> : si la barre d’espace indique « English » ou « Deutsch », touchez le globe 🌐 jusqu’à « Français ». La dictée écoute dans la langue du clavier.<br>3. Touchez le <strong>micro 🎙 en bas à droite du clavier</strong> et parlez.<br>4. Touchez le clavier pour arrêter, puis « Vérifier et ranger ».</span>
         <span class="s">Pas de micro sur le clavier ? Réglages › Général › Clavier › activer « Dictée ». Pas de clavier français ? Réglages › Général › Clavier › Claviers › Ajouter « Français ».</span>
         ${ui.micErr ? `<span class="s">Code : ${esc(ui.micErr)}</span>` : ""}
       </div>
-      <textarea id="qa-text" class="input" data-qatext rows="3" lang="fr" autocapitalize="sentences" autocorrect="on" style="min-height:84px;padding:10px;font-family:inherit" placeholder="Ou tapez / dictez avec le micro du clavier">${esc(qa.text)}</textarea>
-      <button class="cta" data-act="qa-go">${qa.target === "stock" ? "Vérifier et ranger" : "Ajouter à la liste de courses"}</button>
       <span class="add-sub">Les prix sont facultatifs. Sans prix, le budget utilise les derniers prix connus. Les dates de péremption sont estimées automatiquement.</span>`;
   } else {
     panel = `<div class="add-head">${IC.barcode(30)}<span><span class="add-title">Scannez les codes-barres</span><span class="add-sub">Produit par produit, ou en rafale pour un sac entier.</span></span></div>
@@ -987,6 +988,22 @@ function toggleMic() {
     setTimeout(() => { if (ui.listening && !heard) { try { recog.stop(); } catch {} } }, 7000);
   } catch { ui.micHelp = true; render(); }
 }
+// Sur iPhone, avec le clavier ouvert, le premier appui ferme le clavier et décale la page :
+// on déclenche aussi l'action au toucher, et une seule fois.
+let qaBusy = 0;
+function runQaGo() {
+  if (Date.now() - qaBusy < 1500) return;
+  qaBusy = Date.now();
+  const el = document.getElementById("qa-text");
+  if (el) { ui.qa.text = el.value; el.blur(); }
+  quickAddGo().catch((e) => { console.error(e); showToast("Erreur : " + (e?.message || e)); render(); });
+}
+document.addEventListener("touchend", (e) => {
+  const b = e.target.closest && e.target.closest('[data-act="qa-go"]');
+  if (b) { e.preventDefault(); runQaGo(); }
+}, { passive: false });
+window.addEventListener("error", (e) => { try { showToast("Erreur : " + e.message); render(); } catch {} });
+window.addEventListener("unhandledrejection", (e) => { try { const m = e.reason?.message || String(e.reason || ""); if (m && !/abort|network|fetch/i.test(m)) { showToast("Erreur : " + m); render(); } } catch {} });
 async function quickAddGo() {
   if (!(ui.qa.text || "").trim()) { showToast("Dictez ou tapez d’abord vos produits"); render(); return; }
   const r = parsePhrase(ui.qa.text);
@@ -2142,7 +2159,7 @@ app.addEventListener("click", (e) => {
     case "addmode": ui.addMode = v; render(); break;
     case "qa-target": ui.qa.target = v; render(); break;
     case "mic": if (ui.micHelp && !ui.listening) { keyboardDictation(); } else toggleMic(); break;
-    case "qa-go": { const el = document.getElementById("qa-text"); if (el) ui.qa.text = el.value; quickAddGo(); break; }
+    case "qa-go": runQaGo(); break;
     case "tk-new": ui.tk = { step: "text", text: "" }; break;
     case "tk-read": { const el = document.getElementById("tk-text"); if (el) ui.tk = { ...(ui.tk || {}), step: "text", text: el.value }; if (!(ui.tk?.text || "").trim()) { showToast("Scannez ou collez d’abord le texte du ticket"); render(); break; } readTicket(); break; }
     case "tk-back": if (ui.tk?.source === "voice") { ui.tk = null; go("#/ajouter"); } else { ui.tk = { step: "text", text: ui.tk?.text || "" }; render(); } break;
