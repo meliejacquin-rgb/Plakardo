@@ -15,9 +15,18 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.10.2";
+const APP_VERSION = "2.11.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
+const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
+// Catégories modifiables (meta « categories ») : renommer, ajouter, réordonner, supprimer si vide.
+function applyCats() {
+  const list = meta.categories?.list;
+  const next = Array.isArray(list) && list.length ? [...list].sort((x, y) => (x.order ?? 0) - (y.order ?? 0)).map((c) => ({ id: c.id, name: c.name })) : DEFAULT_CATS.map((c) => ({ ...c }));
+  CATS.splice(0, CATS.length, ...next);
+  for (const k of Object.keys(CAT)) delete CAT[k];
+  for (const c of CATS) CAT[c.id] = c;
+}
 const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
 const PLURAL = { pièce: "pièces", paquet: "paquets", boîte: "boîtes", bouteille: "bouteilles", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", pot: "pots", rouleau: "rouleaux", g: "g", kg: "kg", ml: "ml", cl: "cl", L: "L" };
 
@@ -792,7 +801,7 @@ function offlineBanner() {
 function viewStocks() {
   const seg = `<div class="seg" role="group" aria-label="Affichage"><button data-act="stockview" data-v="lieu" aria-pressed="${ui.stockView === "lieu"}">Par lieu</button><button data-act="stockview" data-v="cat" aria-pressed="${ui.stockView === "cat"}">Par catégorie</button></div>`;
   let body;
-  if (ui.stockView === "cat") body = catGrid();
+  if (ui.stockView === "cat") body = catGrid() + `<a class="chip" href="#/categories" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none">Gérer les catégories (ajouter, renommer)</a>`;
   else {
     body = locations().map((l) => {
       const list = products.filter((p) => inLoc(p, l.id));
@@ -846,6 +855,22 @@ function viewLieu(locId) {
   </main>${ui.toast ? "" : `<a class="fab" href="#/ajout?loc=${locId}">${I.plus(20)}Ajouter</a>`}${nav("placards")}`;
 }
 
+function viewCategories() {
+  return `<main class="screen no-nav">${offlineBanner()}
+    <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Catégories</h1><span class="sub">Ajouter, renommer, réordonner</span></div></div>
+    <div class="card" style="padding:4px 10px">${CATS.map((c, i) => {
+      const used = products.some((p) => p.categoryId === c.id);
+      return `<div class="list-row" style="padding-left:4px"><span class="cat-ico sm c-${c.id}">${catIcon(c.id, 18)}</span>
+        <input class="input sm" style="flex:1" data-catname="${c.id}" value="${esc(c.name)}" aria-label="Nom de la catégorie">
+        <button class="sc-x" data-act="cat-up" data-v="${c.id}" aria-label="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
+        <button class="sc-x" data-act="cat-del" data-v="${c.id}" aria-label="Supprimer ${esc(c.name)}" ${used ? 'style="opacity:.35"' : ""}>×</button></div>`;
+    }).join("")}</div>
+    <form id="cat-add" class="search" style="padding-right:6px"><input id="cat-new" placeholder="Nouvelle catégorie (ex. Entretien, Bébé)" autocomplete="off" aria-label="Nouvelle catégorie">
+      <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>
+    <p class="hint">Une catégorie qui contient des produits ne peut pas être supprimée : changez d’abord la catégorie de ces produits dans leur fiche.</p>
+  </main><div class="cta-bar"><button class="cta" data-act="cat-save">Enregistrer les noms</button></div>`;
+}
+const catList = () => CATS.map((c, i) => ({ id: c.id, name: c.name, order: i }));
 function viewLieux() {
   const locs = locations();
   return `<main class="screen no-nav">${offlineBanner()}
@@ -1630,6 +1655,7 @@ function prefsSection() {
     <span class="eyebrow">Données</span>
     <a class="out-btn" href="#/historique" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Historique des opérations</a>
     <a class="out-btn" href="#/lieux" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Gérer les lieux</a>
+    <a class="out-btn" href="#/categories" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Gérer les catégories</a>
     <button class="out-btn" data-act="backup">Télécharger une sauvegarde</button>
   </section>`;
 }
@@ -2103,6 +2129,7 @@ function render() {
       case "placards": html = viewStocks(); break;
       case "lieu": html = viewLieu(r.arg); break;
       case "lieux": html = viewLieux(); break;
+      case "categories": html = viewCategories(); break;
       case "ajouter": html = viewAjouter(); break;
       case "cuisine": html = viewCuisine(); break;
       case "historique": html = viewHistorique(r); break;
@@ -2277,6 +2304,16 @@ app.addEventListener("click", (e) => {
       break;
     }
     case "week-make": composeWeek(); break;
+    case "cat-up": { const list = catList(); const i = list.findIndex((c) => c.id === v); if (i > 0) { [list[i - 1].order, list[i].order] = [i, i - 1]; store.setMeta("categories", { list }); } break; }
+    case "cat-del": {
+      if (products.some((p) => p.categoryId === v)) { showToast("Cette catégorie contient des produits : changez-les d’abord de catégorie"); render(); break; }
+      if (CATS.length <= 1) break;
+      store.setMeta("categories", { list: catList().filter((c) => c.id !== v) }); break;
+    }
+    case "cat-save": {
+      const list = catList().map((c) => { const el = app.querySelector(`[data-catname="${c.id}"]`); return { ...c, name: (el && el.value.trim()) || c.name }; });
+      store.setMeta("categories", { list }); showToast("Catégories enregistrées"); go("#/placards"); break;
+    }
     case "mp-day": ui.mpDay = v; render(); break;
     case "mp-tab": ui.mpTab = v; ui.mpMore = 40; render(); break;
     case "mp-more": ui.mpMore = (ui.mpMore || 40) + 40; render(); break;
@@ -2455,6 +2492,14 @@ app.addEventListener("submit", async (e) => {
     if (label) { store.addShopping({ label, qty: 1, checked: false, state: "todo", sources: [] }); ui.shopNew = ""; render(); }
     return;
   }
+  if (e.target.id === "cat-add") {
+    e.preventDefault();
+    const name = (document.getElementById("cat-new")?.value || "").trim();
+    if (!name) return;
+    if (CATS.some((c) => c.name.toLowerCase() === name.toLowerCase())) { showToast("Cette catégorie existe déjà"); render(); return; }
+    store.setMeta("categories", { list: [...catList(), { id: "cat_" + Date.now().toString(36), name, order: CATS.length }] });
+    return;
+  }
   if (e.target.id === "loc-add") {
     e.preventDefault();
     const name = (document.getElementById("loc-new")?.value || "").trim();
@@ -2543,7 +2588,7 @@ async function start() {
       unsubShop = store.subscribeShopping((list) => { shopping = list; render(); });
       unsubExtra = [
         store.subscribeOps((list) => { ops = list; render(); }),
-        store.subscribeMeta((m) => { meta = m || {}; render(); }),
+        store.subscribeMeta((m) => { meta = m || {}; applyCats(); render(); }),
         store.subscribeRecipes((list) => { recipes = list; render(); }),
         store.subscribePurchases((list) => { purchases = list; render(); }),
       ];
