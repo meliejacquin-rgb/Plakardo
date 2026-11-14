@@ -741,6 +741,7 @@ Couscous végétarien express | Plat | Maghrébin | 15 | 25 | Facile
 
 Salade de patate douce et lentilles | Plat | Healthy | 15 | 25 | Facile
 @id b-salade-de-patate-douce-et-lentilles
+@img img/recettes/b-salade-de-patate-douce-et-lentilles.webp
 - patate douce: 350 g
 - lentilles cuites: 250 g
 - roquette: 70 g
