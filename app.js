@@ -1,5 +1,5 @@
 // PLAKARDO – application (v1, socle)
-import { createStore, isDemo, displayName, resolveName, newOpId } from "./data.js";
+import { createStore, isDemo, displayName, resolveName, setDisplayName, newOpId } from "./data.js";
 import * as E from "./engine.js";
 import { BOOK } from "./recipes.js";
 import { household } from "./firebase-config.js";
@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.18.0";
+const APP_VERSION = "2.19.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -126,6 +126,9 @@ const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const app = document.getElementById("app");
 let store = null;
 let user;              // undefined = en attente, null = déconnecté
+let hh = null;         // foyer de l'utilisateur { id, name } ; null = pas encore rattaché
+const isAdminHH = () => hh && hh.id === household.id;
+const hhName = () => meta.household?.name || (isAdminHH() ? household.name : "Mon foyer");
 let products = [];
 let shopping = [];
 let unsubShop = null;
@@ -379,7 +382,7 @@ async function storeChecked() {
 }
 async function shareList() {
   const items = shoppingItems().filter((it) => !it.checked);
-  const text = "Courses " + household.name + " :\n" + items.map((it) => `- ${it.label}${it.product ? ` ×${fmtQ(it.qty)}` : ""}`).join("\n");
+  const text = "Courses " + hhName() + " :\n" + items.map((it) => `- ${it.label}${it.product ? ` ×${fmtQ(it.qty)}` : ""}`).join("\n");
   try {
     if (navigator.share) await navigator.share({ title: "Liste de courses", text });
     else { await navigator.clipboard.writeText(text); showToast("Liste copiée"); render(); }
@@ -491,7 +494,7 @@ function viewHome() {
   return `<main class="screen">
     ${isDemo ? `<div class="demo-banner">Mode démo : données d’exemple, enregistrées sur cet appareil seulement.</div>` : ""}
     <div class="top">
-      <div class="grow"><span class="brand">Plakardo</span><h1>Mes placards</h1><span class="sub">Foyer ${esc(household.name)} · Bonjour ${esc(me())}</span></div>
+      <div class="grow"><span class="brand">Plakardo</span><h1>Mes placards</h1><span class="sub">Foyer ${esc(hhName())} · Bonjour ${esc(me())}</span></div>
       <a class="icon-btn" href="#/alertes" aria-label="Alertes${count ? `, ${count}` : ""}">${I.bell(22)}${count ? `<span class="badge">${count}</span>` : ""}</a>
       <a class="icon-btn" href="#/profil" aria-label="Profil">${I.user(22)}</a>
     </div>
@@ -747,16 +750,20 @@ function viewAlertes() {
 function viewProfil() {
   const theme = localStorage.getItem("plakardo-theme") || "auto";
   const big = localStorage.getItem("plakardo-big") === "1";
-  const names = household.memberNames || Object.values(household.members);
+  const names = isAdminHH() ? (household.memberNames || Object.values(household.members)) : [me()];
   const online = navigator.onLine;
   return `<main class="screen no-nav">
     <div class="top"><a class="icon-btn" href="#/" aria-label="Retour">${I.back(22)}</a><h1 class="grow">Profil</h1></div>
     <section class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px">
-      <div class="row-between"><span class="t">Foyer ${esc(household.name)}</span>
+      <div class="row-between"><span class="t">Foyer ${esc(hhName())}</span>
         <span class="s" style="font-weight:600;color:${online ? "var(--mint-ink)" : "var(--warn)"}">${isDemo ? "Démo" : online ? "Synchronisé" : "Hors ligne"}</span></div>
       <div class="avatars">${names.map((n) => `<span class="avatar"><span>${esc(n.slice(0, 1))}</span>${esc(n)}</span>`).join("")}</div>
-      <span class="s">Connectée en tant que ${esc(me())}${online || isDemo ? "" : " · hors ligne, consultation seule"}.</span>
+      <span class="s">Connecté(e) en tant que ${esc(me())}${online || isDemo ? "" : " · hors ligne, consultation seule"}.</span>
+      <form id="hh-name" class="search" style="padding-right:6px"><label class="sr" for="hh-new">Nom du foyer</label>
+        <input id="hh-new" value="${esc(hhName())}" placeholder="Nom du foyer" autocomplete="off" maxlength="40">
+        <button class="out-btn" style="height:38px;padding:0 14px">Renommer</button></form>
     </section>
+    ${isAdminHH() ? `<a class="card shop-entry" href="#/admin"><span class="cat-ico" style="background:var(--soft);color:var(--primary)">${svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/><path d="M18 3l3 3-3 3"/>', 22)}</span><span class="grow"><span class="t">Administration</span><span class="s">Ouvrir Plakardo à d’autres foyers</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>` : ""}
     <section style="display:flex;flex-direction:column;gap:8px">
       <h2 class="eyebrow">Confort</h2>
       <div class="card" style="overflow:hidden">
@@ -824,19 +831,101 @@ async function addKit() {
 }
 
 function viewLogin() {
+  const r = route();
+  const code = r.name === "inscription" ? (r.params.get("code") || "") : (ui.joinCode || "");
+  const signup = ui.loginMode === "signup" || (r.name === "inscription" && ui.loginMode !== "login");
   return `<main class="login">
     <img src="icons/icon-192.png" alt="" width="96" height="96">
     <h1 class="h">Plakardo</h1>
-    <p class="sub" style="text-align:center;margin:-12px 0 0">Foyer ${esc(household.name)}</p>
-    <form id="login" class="card" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+    <div class="seg" role="group" style="width:100%"><button data-act="loginmode" data-v="login" aria-pressed="${!signup}">Se connecter</button><button data-act="loginmode" data-v="signup" aria-pressed="${signup}">Créer un compte</button></div>
+    ${signup ? `<form id="signup" class="card" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <span class="s">Utilisez l’adresse e-mail qui vous a été autorisée, ou le code d’accès reçu.</span>
+      <div class="field"><label for="s-code">Code d’accès <span class="sub">(si vous en avez un)</span></label><input id="s-code" class="input" name="code" value="${esc(code)}" autocapitalize="characters" autocomplete="off" placeholder="Ex. FAM1-7K4Q9X"></div>
+      <div class="field"><label for="s-name">Votre prénom</label><input id="s-name" class="input" name="name" autocomplete="given-name" required></div>
+      <div class="field"><label for="s-email">E-mail</label><input id="s-email" class="input" type="email" name="email" autocomplete="username" required></div>
+      <div class="field"><label for="s-pass">Mot de passe <span class="sub">(6 caractères minimum)</span></label><input id="s-pass" class="input" type="password" name="password" autocomplete="new-password" minlength="6" required></div>
+      ${ui.loginError ? `<p class="err" role="alert">${esc(ui.loginError)}</p>` : ""}
+      <button class="cta" type="submit" ${ui.busy ? "disabled" : ""}>Créer mon compte</button>
+      <span class="s">Déjà un compte ? Utilisez « Se connecter ».</span>
+    </form>` : `<form id="login" class="card" style="padding:18px;display:flex;flex-direction:column;gap:14px">
       <div class="field"><label for="l-email">E-mail</label><input id="l-email" class="input" type="email" name="email" autocomplete="username" required></div>
       <div class="field"><label for="l-pass">Mot de passe</label><input id="l-pass" class="input" type="password" name="password" autocomplete="current-password" required></div>
       ${ui.loginError ? `<p class="err" role="alert">${esc(ui.loginError)}</p>` : ""}
+      ${ui.loginInfo ? `<p class="s" style="color:var(--mint-ink)">${esc(ui.loginInfo)}</p>` : ""}
       <button class="cta" type="submit" ${ui.busy ? "disabled" : ""}>Se connecter</button>
+      <button type="button" class="link-btn" data-act="pwreset">Mot de passe oublié</button>
+    </form>`}
+  </main>`;
+}
+// Connecté(e) mais pas encore rattaché(e) à un foyer : saisie du code d'accès.
+function viewJoin() {
+  const r = route();
+  const code = r.params.get("code") || ui.joinCode || "";
+  return `<main class="login">
+    <img src="icons/icon-192.png" alt="" width="96" height="96">
+    <h1 class="h">Rejoindre un foyer</h1>
+    <form id="join" class="card" style="padding:18px;display:flex;flex-direction:column;gap:14px">
+      <span class="s">Entrez le code d’accès reçu pour votre foyer.</span>
+      <div class="field"><label for="j-code">Code d’accès</label><input id="j-code" class="input" name="code" value="${esc(code)}" autocapitalize="characters" autocomplete="off" required></div>
+      <div class="field"><label for="j-name">Votre prénom</label><input id="j-name" class="input" name="name" autocomplete="given-name" required></div>
+      ${ui.loginError ? `<p class="err" role="alert">${esc(ui.loginError)}</p>` : ""}
+      <button class="cta" type="submit" ${ui.busy ? "disabled" : ""}>Rejoindre</button>
+      <button type="button" class="link-btn" data-act="logout">Se déconnecter</button>
     </form>
   </main>`;
 }
-
+// Administration : accès Famille 1, 2, 3… (visible seulement dans le foyer ChatPito).
+const INV_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const newInviteCode = (n) => `FAM${n}-` + Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => INV_ALPHA[b % INV_ALPHA.length]).join("");
+function viewAdmin() {
+  if (!isAdminHH()) return viewProfil();
+  if (!ui.adm && !ui.admLoading) { ui.admLoading = true; store.adminLoad().then((x) => { ui.adm = x; ui.admLoading = false; render(); }).catch((e) => { ui.adm = { families: [], invites: [], access: [], members: [], error: e?.code === "permission-denied" ? "Règles de sécurité pas encore publiées." : (e?.message || "Chargement impossible") }; ui.admLoading = false; render(); }); }
+  const A = ui.adm;
+  const link = (c) => `${location.origin}${location.pathname}#/inscription?code=${c}`;
+  const fams = (A?.families || []).sort((x, y) => (x.n || 0) - (y.n || 0));
+  const next = fams.reduce((m, f) => Math.max(m, f.n || 0), 0) + 1;
+  const famCard = (f) => {
+    const mem = A.members.filter((m) => m.household === f.key);
+    const acc = A.access.filter((x) => x.household === f.key);
+    const inv = A.invites.filter((x) => x.household === f.key);
+    const memEmails = new Set(mem.map((m) => m.email));
+    return `<section class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div class="row-between"><span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:19px">${esc(f.label || f.key)}</span><span class="s">${plural(mem.length, "membre", "membres")}</span></div>
+      <span class="eyebrow">Adresses autorisées</span>
+      ${acc.length ? acc.map((x) => `<div class="row-between" style="gap:8px"><span class="grow" style="min-width:0"><span class="t" style="overflow-wrap:anywhere">${esc(x.key)}</span><span class="s">${x.name ? esc(x.name) + " · " : ""}${memEmails.has(x.key) ? "✓ compte créé" : "en attente d’inscription"}</span></span>
+        <button class="sc-x" data-act="adm-rm" data-v="${esc(x.key)}" aria-label="Retirer l’accès de ${esc(x.key)}">×</button></div>`).join("") : `<span class="s">Aucune adresse pour l’instant.</span>`}
+      ${mem.filter((m) => !acc.some((x) => x.key === m.email)).map((m) => `<div class="row-between" style="gap:8px"><span class="grow"><span class="t">${esc(m.name || m.email || "Membre")}</span><span class="s">${esc(m.email || "")} · entré(e) avec le code</span></span>
+        <button class="sc-x" data-act="adm-rmmem" data-v="${esc(m.key)}" aria-label="Retirer ce membre">×</button></div>`).join("")}
+      <form class="adm-add" data-hid="${esc(f.key)}" style="display:flex;flex-direction:column;gap:6px">
+        <input class="input" name="email" type="email" placeholder="adresse@exemple.fr" autocomplete="off" required>
+        <div style="display:flex;gap:6px"><input class="input" name="name" placeholder="Prénom (facultatif)" autocomplete="off" style="flex:1"><button class="cta" style="height:48px;width:auto;padding:0 18px">Autoriser</button></div></form>
+      ${inv.map((i) => `<div class="row-between" style="gap:8px;border-top:1px solid var(--soft);padding-top:8px"><span class="grow"><span class="s">Code d’accès${i.disabled ? " (désactivé)" : ""}</span><span class="t" style="font-family:ui-monospace,monospace;letter-spacing:.5px">${esc(i.key)}</span></span>
+        <button class="out-btn" style="height:36px;padding:0 12px" data-act="inv-share" data-v="${esc(i.key)}" data-link="${esc(link(i.key))}" data-label="${esc(f.label || "")}">Partager</button>
+        <button class="sc-x" data-act="inv-toggle" data-v="${esc(i.key)}" aria-label="${i.disabled ? "Réactiver" : "Désactiver"} le code">${i.disabled ? "↺" : "×"}</button></div>`).join("")}
+    </section>`;
+  };
+  return `<main class="screen no-nav">${offlineBanner()}
+    <div class="top"><a class="icon-btn" href="#/profil" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Administration</h1><span class="sub">Qui a accès à Plakardo</span></div></div>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--mint-soft);border-color:transparent">
+      <span class="t" style="color:var(--mint-ink)">Comment ça marche</span>
+      <span class="s">1. Créez un foyer (Famille 1, 2…). 2. Ajoutez les adresses e-mail autorisées. 3. Envoyez-leur le lien de Plakardo : elles touchent « Créer un compte » avec l’adresse autorisée (ou le code d’accès). Chaque foyer démarre avec vos rubriques, vos lieux vides et le livre de recettes, et peut se renommer. Vous ne voyez jamais leurs placards.</span></section>
+    ${!A ? `<p class="s">Chargement…</p>` : A.error ? `<p class="err">${esc(A.error)}</p>` : ""}
+    ${A ? fams.map(famCard).join("") : ""}
+    ${A && !A.error ? `<button class="cta" style="height:52px" data-act="adm-newfam" ${ui.busy ? "disabled" : ""}>${I.plus(16)} Créer le foyer Famille ${next}</button>` : ""}
+  </main>`;
+}
+async function createFamily() {
+  const n = (ui.adm?.families || []).reduce((m, f) => Math.max(m, f.n || 0), 0) + 1;
+  const hid = `famille-${n}`;
+  const template = {
+    categories: CATS.map((c, i) => ({ id: c.id, name: c.name, icon: c.icon || "", color: c.color || "", order: i })),
+    locations: locations().map((l, i) => ({ id: l.id, name: l.name, icon: l.icon || "box", order: i })),
+  };
+  ui.busy = true; render();
+  try { await store.createFamily(hid, { label: `Famille ${n}`, n, template, by: me() }, newInviteCode(n)); ui.adm = null; showToast(`Foyer Famille ${n} créé`); }
+  catch (e) { showToast(e?.code === "permission-denied" ? "Refusé : règles de sécurité à publier" : (e?.message || "Création impossible")); }
+  finally { ui.busy = false; render(); }
+}
 function toastHtml() {
   if (!ui.toast) return "";
   return `<div class="toast${ui.toast.undo ? "" : " plain"}" role="status"><span>${esc(ui.toast.text)}</span>${ui.toast.undo ? `<button data-act="undo">Annuler</button>` : ""}</div>`;
@@ -2388,6 +2477,46 @@ function viewBudget() {
 }
 
 // ───────────────────────── Rendu ─────────────────────────
+// Ouvre la session : trouve le foyer de la personne puis branche les données.
+async function startSession(u, known = null) {
+    if (u) await resolveName(u.email);
+    user = u;
+    hh = null; ui.invites = null;
+    if (u) {
+      ui.hhPending = true; render();
+      const found = known || await store.resolveHousehold(u);
+      ui.hhPending = false;
+      if (found) { hh = found; store.useHousehold(found.id); if (found.name) setDisplayName(found.name); }
+    }
+    if (unsub) { unsub(); unsub = null; }
+    if (unsubShop) { unsubShop(); unsubShop = null; }
+    unsubExtra.forEach((f) => f && f()); unsubExtra = [];
+    ops = []; meta = {}; recipes = []; purchases = [];
+    shopping = [];
+    products = [];
+    loaded = false;
+    dataError = "";
+    if (u && hh) {
+      unsubShop = store.subscribeShopping((list) => { shopping = list; render(); });
+      unsubExtra = [
+        store.subscribeOps((list) => { ops = list; render(); }),
+        store.subscribeMeta((m) => { meta = m || {}; applyCats(); render(); }),
+        store.subscribeRecipes((list) => { recipes = list; render(); }),
+        store.subscribePurchases((list) => { purchases = list; render(); }),
+      ];
+      unsub = store.subscribe(
+        (list) => { products = list; loaded = true; if (navigator.onLine) lastSync = Date.now(); render(); refreshScanner(); },
+        (err) => {
+          dataError = err?.code === "permission-denied"
+            ? "Accès refusé : cette adresse e-mail n’est pas autorisée dans les règles du foyer."
+            : "Données indisponibles pour le moment.";
+          render();
+        }
+      );
+    }
+    render();
+  }
+
 function render() {
   const active = document.activeElement;
   const focusId = active && active.id;
@@ -2397,6 +2526,8 @@ function render() {
     html = `<div class="splash"><img src="icons/icon-192.png" alt="" width="96" height="96"><p>Ouverture des placards…</p></div>`;
   } else if (!user) {
     html = viewLogin();
+  } else if (!hh) {
+    html = hh === null && ui.hhPending ? `<div class="splash"><img src="icons/icon-192.png" alt="" width="96" height="96"><p>Ouverture du foyer…</p></div>` : viewJoin();
   } else {
     const r = route();
     if (r.name !== "ajout" && r.name !== "produit") { ui.form = null; ui.formKey = ""; }
@@ -2404,6 +2535,7 @@ function render() {
       case "placards": html = viewStocks(); break;
       case "lieu": html = viewLieu(r.arg); break;
       case "inventaire": html = viewInventaire(r.arg); break;
+      case "admin": html = viewAdmin(); break;
       case "lieux": html = viewLieux(); break;
       case "categories": html = viewCategories(); break;
       case "ajouter": html = viewAjouter(); break;
@@ -2686,6 +2818,32 @@ app.addEventListener("click", (e) => {
       showToast(`${plural(n, "besoin ajouté", "besoins ajoutés")} aux courses`); go("#/courses"); break;
     }
     case "shoptab": ui.shopTab = v; render(); break;
+    case "loginmode": ui.loginMode = v; ui.loginError = ""; render(); break;
+    case "pwreset": {
+      const em = String(document.getElementById("l-email")?.value || "").trim();
+      if (!em) { ui.loginError = "Indiquez d’abord votre e-mail ci-dessus."; render(); break; }
+      store.resetPassword(em).then(() => { ui.loginError = ""; ui.loginInfo = "E-mail de réinitialisation envoyé (pensez aux spams)."; render(); }).catch(() => { ui.loginError = "Envoi impossible : vérifiez l’adresse."; render(); });
+      break;
+    }
+    case "adm-newfam": createFamily(); break;
+    case "inv-toggle": { const i = (ui.adm?.invites || []).find((x) => x.key === v); if (i) store.setInviteDisabled(v, !i.disabled).then(() => { ui.adm = null; render(); }); break; }
+    case "adm-rm": {
+      if (ui.admArm !== v) { ui.admArm = v; showToast("Touchez encore × pour retirer l’accès"); render(); break; }
+      ui.admArm = null;
+      const uids = (ui.adm?.members || []).filter((m) => m.email === v).map((m) => m.key);
+      store.removeAccess(v, uids).then(() => { ui.adm = null; showToast("Accès retiré"); render(); }).catch((e) => showToast(e?.message || "Impossible"));
+      break;
+    }
+    case "adm-rmmem": {
+      if (ui.admArm !== v) { ui.admArm = v; showToast("Touchez encore × pour retirer ce membre"); render(); break; }
+      ui.admArm = null; store.removeMember(v).then(() => { ui.adm = null; showToast("Membre retiré"); render(); }); break;
+    }
+    case "inv-share": {
+      const text = `Rejoins Plakardo pour gérer les placards de ${t.dataset.label || "ton foyer"} 🏠\nCode d’accès : ${v}\nLien : ${t.dataset.link}`;
+      if (navigator.share) navigator.share({ title: "Plakardo", text }).catch(() => {});
+      else navigator.clipboard?.writeText(text).then(() => showToast("Code et lien copiés")).catch(() => showToast(v));
+      break;
+    }
     case "inv-step": if (ui.inv) { const p = find(ui.inv.ids[ui.inv.i]); if (p) { const c = ui.inv.vals[p.id] !== undefined ? ui.inv.vals[p.id] : E.round3(E.qtyIn(p, ui.inv.loc)); ui.inv.vals[p.id] = Math.max(0, E.round3(c + Number(v))); render(); } } break;
     case "inv-status": if (ui.inv) { ui.inv.vals[ui.inv.ids[ui.inv.i]] = v; render(); } break;
     case "inv-ok": if (ui.inv) { const el = document.querySelector("[data-invq]"); const p = find(ui.inv.ids[ui.inv.i]); if (el && p && !E.isStatusMode(p)) { const n = parseQ(el.value); if (n !== E.round3(E.qtyIn(p, ui.inv.loc)) || ui.inv.vals[p.id] !== undefined) ui.inv.vals[p.id] = Math.max(0, n); } ui.inv.i += 1; window.scrollTo(0, 0); render(); } break;
@@ -2828,6 +2986,45 @@ app.addEventListener("submit", async (e) => {
     store.setMeta("locations", { list });
     return;
   }
+  if (e.target.classList && e.target.classList.contains("adm-add")) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const em = String(fd.get("email") || "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { showToast("Adresse e-mail invalide"); return; }
+    if ((ui.adm?.access || []).some((x) => x.key === em)) { showToast("Cette adresse est déjà autorisée"); return; }
+    store.addAccess(em, e.target.dataset.hid, String(fd.get("name") || "")).then(() => { ui.adm = null; showToast("Adresse autorisée"); render(); }).catch((er) => showToast(er?.code === "permission-denied" ? "Refusé : règles à publier" : (er?.message || "Impossible")));
+    return;
+  }
+  if (e.target.id === "hh-name") {
+    e.preventDefault();
+    const v = String(document.getElementById("hh-new")?.value || "").trim().slice(0, 40);
+    if (v && canWrite()) store.setMeta("household", { ...(meta.household || {}), name: v }).then(() => showToast("Foyer renommé")).catch((er) => showToast(er?.message || "Impossible"));
+    return;
+  }
+  if (e.target.id === "signup" || e.target.id === "join") {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const code = String(fd.get("code") || ""), name = String(fd.get("name") || "");
+    ui.busy = true; ui.loginError = ""; ui.joinCode = code; render();
+    try {
+      ui.joining = true;
+      let u = user;
+      if (e.target.id === "signup") { const cred = await store.signUp(String(fd.get("email")), String(fd.get("password"))); u = { email: cred.user.email, uid: cred.user.uid }; }
+      if (!code.trim() && e.target.id === "signup") { ui.joining = false; ui.pendingName = name; await startSession(u); return; }
+      const res = await store.joinWithCode(u, code, name);
+      ui.joining = false;
+      await startSession(u, res);
+    } catch (err) {
+      ui.joining = false;
+      const c = err?.code || "";
+      ui.loginError = c.includes("email-already-in-use") ? "Cette adresse a déjà un compte : connectez-vous avec l’onglet « Se connecter »."
+        : c.includes("weak-password") ? "Mot de passe trop court (6 caractères minimum)."
+        : c.includes("invalid-email") ? "Adresse e-mail invalide."
+        : c.includes("permission") ? "Code d’accès refusé."
+        : err?.message || "Inscription impossible.";
+    } finally { ui.busy = false; render(); }
+    return;
+  }
   if (e.target.id !== "login") return;
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -2892,37 +3089,7 @@ async function start() {
     onClose: (hash) => go(hash || "#/"),
     onError: (m) => { showToast(m); render(); },
   });
-  store.onUser(async (u) => {
-    if (u) await resolveName(u.email);
-    user = u;
-    if (unsub) { unsub(); unsub = null; }
-    if (unsubShop) { unsubShop(); unsubShop = null; }
-    unsubExtra.forEach((f) => f && f()); unsubExtra = [];
-    ops = []; meta = {}; recipes = []; purchases = [];
-    shopping = [];
-    products = [];
-    loaded = false;
-    dataError = "";
-    if (u) {
-      unsubShop = store.subscribeShopping((list) => { shopping = list; render(); });
-      unsubExtra = [
-        store.subscribeOps((list) => { ops = list; render(); }),
-        store.subscribeMeta((m) => { meta = m || {}; applyCats(); render(); }),
-        store.subscribeRecipes((list) => { recipes = list; render(); }),
-        store.subscribePurchases((list) => { purchases = list; render(); }),
-      ];
-      unsub = store.subscribe(
-        (list) => { products = list; loaded = true; if (navigator.onLine) lastSync = Date.now(); render(); refreshScanner(); },
-        (err) => {
-          dataError = err?.code === "permission-denied"
-            ? "Accès refusé : cette adresse e-mail n’est pas autorisée dans les règles du foyer."
-            : "Données indisponibles pour le moment.";
-          render();
-        }
-      );
-    }
-    render();
-  });
+  store.onUser(async (u) => { if (!ui.joining) await startSession(u); });
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => {
       reg.update().catch(() => {});

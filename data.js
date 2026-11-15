@@ -23,6 +23,15 @@ export async function resolveName(email) {
   return currentName;
 }
 export function displayName() { return currentName; }
+export function setDisplayName(n) { if (n) currentName = n; }
+// Membre historique du foyer ChatPito (empreinte de l'adresse dans firebase-config.js).
+export async function isLegacyMember(email) {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(email || "").trim().toLowerCase()));
+    const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return !!household.members[hex];
+  } catch { return false; }
+}
 
 // ───────────────────────── Mode démo ─────────────────────────
 function demoStore() {
@@ -93,6 +102,19 @@ function demoStore() {
   const user = { email: "demo@plakardo", demo: true };
   return {
     onUser(cb) { setTimeout(() => cb(user), 0); return () => {}; },
+    async resolveHousehold() { return { id: household.id, name: "" }; },
+    useHousehold() {},
+    async joinWithCode() { return { id: household.id, name: "" }; },
+    async signUp() { return user; },
+    async resetPassword() {},
+    async seedIfNew() {},
+    async adminLoad() { const A = db.admin || (db.admin = { families: [], invites: [], access: [], members: [] }); return clean(A); },
+    async createFamily(hid, data, code) { const A = db.admin || (db.admin = { families: [], invites: [], access: [], members: [] }); A.families.push({ key: hid, ...data, createdAt: Date.now() }); if (code) A.invites.push({ key: code, household: hid, label: data.label }); save(); },
+    async renameFamily(hid, label) { const f = db.admin?.families.find((x) => x.key === hid); if (f) { f.label = label; save(); } },
+    async addAccess(email, hid, name) { const A = db.admin; A.access = A.access.filter((x) => x.key !== email.toLowerCase()); A.access.push({ key: email.toLowerCase(), household: hid, name }); save(); },
+    async removeAccess(email) { db.admin.access = db.admin.access.filter((x) => x.key !== email.toLowerCase()); save(); },
+    async removeMember() {},
+    async setInviteDisabled(code, d) { const i = db.admin?.invites.find((x) => x.key === code); if (i) { i.disabled = !!d; save(); } },
     async signIn() { return user; },
     async signOut() {},
     subscribe(cb) {
@@ -157,13 +179,18 @@ async function firebaseStore() {
   const db = fs.initializeFirestore(app, {
     localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }),
   });
-  const base = ["households", household.id];
-  const productsCol = fs.collection(db, ...base, "products");
-  const historyCol = fs.collection(db, ...base, "history");
+  // Le foyer est choisi après la connexion (ChatPito, Famille 1, Famille 2…).
+  let base, productsCol, historyCol, opsCol, metaCol, recCol;
+  const bindHousehold = (hid) => {
+    base = ["households", hid];
+    productsCol = fs.collection(db, ...base, "products");
+    historyCol = fs.collection(db, ...base, "history");
+    opsCol = fs.collection(db, ...base, "operations");
+    metaCol = fs.collection(db, ...base, "meta");
+    recCol = fs.collection(db, ...base, "recipes");
+  };
+  bindHousehold(household.id);
   const pRef = (id) => fs.doc(db, ...base, "products", id);
-  const opsCol = fs.collection(db, ...base, "operations");
-  const metaCol = fs.collection(db, ...base, "meta");
-  const recCol = fs.collection(db, ...base, "recipes");
 
   // Opération métier atomique et idempotente (COOK-03/04/05) : transaction serveur, jamais rejouée hors ligne.
   async function runOp(op) {
@@ -211,6 +238,69 @@ async function firebaseStore() {
   return {
     onUser(cb) { return authMod.onAuthStateChanged(auth, (u) => cb(u ? { email: u.email, uid: u.uid } : null)); },
     signIn(email, password) { return authMod.signInWithEmailAndPassword(auth, email.trim(), password); },
+    signUp(email, password) { return authMod.createUserWithEmailAndPassword(auth, email.trim(), password); },
+    resetPassword(email) { return authMod.sendPasswordResetEmail(auth, email.trim()); },
+    // Foyer de l'utilisateur : fiche « members/{uid} », sinon membre historique de ChatPito,
+    // sinon adresse autorisée par l'administratrice (« access/{email} »).
+    async resolveHousehold(u) {
+      try {
+        const m = await fs.getDoc(fs.doc(db, "members", u.uid));
+        if (m.exists()) return { id: m.data().household, name: m.data().name || "" };
+      } catch {}
+      if (await isLegacyMember(u.email)) return { id: household.id, name: "" };
+      try {
+        const em = String(u.email || "").trim().toLowerCase();
+        const acc = await fs.getDoc(fs.doc(db, "access", em));
+        if (acc.exists()) {
+          const hid = acc.data().household;
+          await fs.setDoc(fs.doc(db, "members", u.uid), { household: hid, email: em, name: acc.data().name || "", createdAt: fs.serverTimestamp() });
+          await this.seedIfNew(hid);
+          return { id: hid, name: acc.data().name || "" };
+        }
+      } catch (e) { console.error(e); }
+      return null;
+    },
+    useHousehold(hid) { bindHousehold(hid); },
+    // Foyer neuf : nom, rubriques et lieux copiés du modèle, préférences par défaut.
+    async seedIfNew(hid) {
+      bindHousehold(hid);
+      const hh = await fs.getDoc(fs.doc(db, ...base, "meta", "household"));
+      if (hh.exists()) return;
+      let fam = {};
+      try { const f = await fs.getDoc(fs.doc(db, "families", hid)); if (f.exists()) fam = f.data(); } catch {}
+      await fs.setDoc(fs.doc(db, ...base, "meta", "household"), { name: fam.label || "Mon foyer", createdAt: fs.serverTimestamp() });
+      if (fam.template?.categories) await fs.setDoc(fs.doc(db, ...base, "meta", "categories"), { list: fam.template.categories });
+      if (fam.template?.locations) await fs.setDoc(fs.doc(db, ...base, "meta", "locations"), { list: fam.template.locations });
+      await fs.setDoc(fs.doc(db, ...base, "meta", "prefs"), { allergies: [], dislikes: [], equipment: [], portions: fam.portions || 2 });
+    },
+    // Rejoindre un foyer avec un code d'accès.
+    async joinWithCode(u, code, name) {
+      const c = String(code || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+      const inv = await fs.getDoc(fs.doc(db, "invites", c));
+      if (!inv.exists() || inv.data().disabled) throw new Error("Code d’accès inconnu ou désactivé. Vérifiez-le auprès de la personne qui vous l’a envoyé.");
+      const hid = inv.data().household;
+      await fs.setDoc(fs.doc(db, "members", u.uid), { household: hid, code: c, email: String(u.email || "").toLowerCase(), name: String(name || "").trim().slice(0, 40), createdAt: fs.serverTimestamp() });
+      await this.seedIfNew(hid);
+      return { id: hid, name: String(name || "").trim() };
+    },
+    // ── Administration (foyer ChatPito uniquement) ──
+    async adminLoad() {
+      const grab = async (c) => (await fs.getDocs(fs.collection(db, c))).docs.map((x) => ({ key: x.id, ...x.data(), createdAt: x.data().createdAt?.toMillis ? x.data().createdAt.toMillis() : 0 }));
+      const [families, invites, access, members] = await Promise.all([grab("families"), grab("invites"), grab("access"), grab("members")]);
+      return { families, invites, access, members };
+    },
+    async createFamily(hid, data, code) {
+      await fs.setDoc(fs.doc(db, "families", hid), { ...clean(data), createdAt: fs.serverTimestamp() });
+      if (code) await fs.setDoc(fs.doc(db, "invites", code), { household: hid, label: data.label, createdAt: fs.serverTimestamp() });
+    },
+    renameFamily(hid, label) { return fs.updateDoc(fs.doc(db, "families", hid), { label }); },
+    addAccess(email, hid, name) { return fs.setDoc(fs.doc(db, "access", String(email).trim().toLowerCase()), { household: hid, name: String(name || "").trim(), createdAt: fs.serverTimestamp() }); },
+    async removeAccess(email, memberUids = []) {
+      await fs.deleteDoc(fs.doc(db, "access", String(email).trim().toLowerCase()));
+      for (const uid of memberUids) await fs.deleteDoc(fs.doc(db, "members", uid));
+    },
+    removeMember(uid) { return fs.deleteDoc(fs.doc(db, "members", uid)); },
+    setInviteDisabled(code, disabled) { return fs.updateDoc(fs.doc(db, "invites", code), { disabled: !!disabled }); },
     signOut() { return authMod.signOut(auth); },
     subscribe(cb, onError) {
       return fs.onSnapshot(
