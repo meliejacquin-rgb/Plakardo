@@ -214,6 +214,17 @@ export function applyLines(products, lines, { now = new Date(), by = "" } = {}) 
     } else {
       throw new OpError("invalid", "Opération inconnue.");
     }
+    // Journal de consommation et de réassort (sert à prévoir quand le produit sera vide).
+    const tNow = now.getTime();
+    if (typeof rec.delta === "number" && rec.delta !== 0 && !isStatusMode(p)) {
+      if (line.kind === "lotdelta") {
+        // Annulation : on retire l'événement correspondant.
+        const key = rec.delta > 0 ? "usage" : "restocks";
+        const arr = [...(p[key] || [])]; const i = arr.map((x) => round3(x.q)).lastIndexOf(round3(Math.abs(rec.delta)));
+        if (i >= 0) { arr.splice(i, 1); p[key] = arr; }
+      } else if (rec.delta < 0 && line.kind !== "transfer") p.usage = [...(p.usage || []), { t: tNow, q: round3(-rec.delta) }].slice(-40);
+      else if (rec.delta > 0 && line.kind === "add") p.restocks = [...(p.restocks || []), { t: tNow, q: round3(rec.delta) }].slice(-12);
+    }
     // nettoyage + projections lisibles par les anciens écrans
     p.lots = p.lots.filter((l) => num(l.qty) > 0);
     const total = round3(p.lots.reduce((n, l) => n + num(l.qty), 0));
@@ -931,4 +942,82 @@ export function rayonOf(name) {
     }
   }
   return "Autres courses";
+}
+
+
+// ── Prévision de rupture ──
+// Durées par défaut pour un foyer de 2 personnes (+ 1 chat), remplacées dès que Plakardo a appris votre rythme.
+// d = nombre de jours que dure 1 unité comptée (tube, rouleau, flacon…) ; g = consommation par jour en grammes ou ml.
+const DUREES = [
+  [["dentifrice", "zahnpasta", "zahncreme"], { d: 30 }],
+  [["papier toilette", "toilettenpapier", "papier wc", "pq"], { d: 3 }],
+  [["essuie tout", "sopalin", "kuchenrolle", "kuchentucher"], { d: 7 }],
+  [["mouchoir", "taschentucher", "kleenex", "tempo"], { d: 7 }],
+  [["gel douche", "duschgel", "douche"], { d: 20 }],
+  [["apres shampo", "spulung", "conditioner"], { d: 45 }],
+  [["shampo", "shampoo"], { d: 30 }],
+  [["savon", "seife", "handseife"], { d: 30 }],
+  [["deodorant", "deo"], { d: 40 }],
+  [["brosse a dent", "zahnburste"], { d: 45 }],
+  [["fil dentaire", "zahnseide"], { d: 60 }],
+  [["bain de bouche", "mundspulung"], { d: 30 }],
+  [["coton tige", "wattestabchen"], { d: 90 }],
+  [["coton", "disques demaquillants", "wattepads"], { d: 45 }],
+  [["creme hydratante", "creme visage", "gesichtscreme", "bodylotion", "lait corps"], { d: 45 }],
+  [["protege slip", "slipeinlage", "serviette hygienique", "binden", "tampon"], { d: 30 }],
+  [["rasoir", "lame", "rasierklinge"], { d: 14 }],
+  [["liquide vaisselle", "produit vaisselle", "spulmittel"], { d: 30 }],
+  [["tablette lave vaisselle", "tablettes", "spulmaschinentabs", "tabs"], { d: 1 }],
+  [["lessive", "waschmittel"], { d: 40 }],
+  [["adoucissant", "weichspuler"], { d: 45 }],
+  [["eponge", "schwamm"], { d: 14 }],
+  [["sac poubelle", "sacs poubelle", "mullbeutel", "mullsack"], { d: 30 }],
+  [["nettoyant", "reiniger", "javel"], { d: 60 }],
+  [["croquette", "trockenfutter"], { g: 60 }],
+  [["patee", "nassfutter", "sachet chat", "terrine"], { d: 1 }],
+  [["litiere", "katzenstreu"], { d: 14, g: 350 }],
+  [["friandise chat", "katzensnack", "snack chat"], { d: 30 }],
+];
+const isMassVol = (u) => ["g", "kg", "ml", "cl", "l"].includes(String(u || "").toLowerCase());
+export function defaultDuration(p) {
+  const n = " " + normTxt(`${p.name} ${p.detail || ""}`) + " ";
+  for (const [kws, v] of DUREES) if (kws.some((k) => n.includes(" " + k))) {
+    if (isMassVol(p.unit)) { if (v.g) { const r = convert(v.g, ["ml", "cl", "l"].includes(String(p.unit).toLowerCase()) ? "ml" : "g", p.unit); if (r) return { rate: r, src: "défaut" }; } return null; }
+    if (v.d) return { rate: 1 / v.d, src: "défaut" };
+  }
+  return null;
+}
+// Retourne { rate (unités/jour), daysLeft, src, emptyAt } ou null si Plakardo ne peut rien estimer.
+export function forecastStock(p, now = new Date()) {
+  if (!p || isStatusMode(p) || p.lowAlert === false) return null;
+  const DAY = 86400000, t = now.getTime();
+  const q = totalQty(p);
+  let rate = null, src = null;
+  if (num(p.daysPerUnit) > 0) { rate = 1 / num(p.daysPerUnit); src = "manuel"; }
+  if (!rate) {
+    const ev = (p.usage || []).filter((x) => x && x.t > t - 180 * DAY && num(x.q) > 0);
+    if (ev.length >= 2) {
+      const first = Math.min(...ev.map((x) => x.t));
+      const span = Math.max(7, (t - first) / DAY);
+      const sum = ev.reduce((s, x) => s + num(x.q), 0);
+      if ((t - first) / DAY >= 5) { rate = sum / span; src = "appris"; }
+    }
+  }
+  if (!rate) {
+    const rs = (p.restocks || []).filter((x) => x && x.t > t - 365 * DAY).sort((a, b) => a.t - b.t);
+    if (rs.length >= 2) {
+      const gaps = rs.slice(1).map((x, i) => (x.t - rs[i].t) / DAY).filter((g) => g >= 2);
+      if (gaps.length) { const gap = gaps.reduce((a, b) => a + b, 0) / gaps.length; const amt = rs.slice(0, -1).reduce((s, x) => s + num(x.q), 0) / (rs.length - 1); rate = amt / gap; src = "achats"; }
+    }
+  }
+  if (!rate) { const d = defaultDuration(p); if (d) { rate = d.rate; src = d.src; } }
+  if (!rate || !(rate > 0)) return null;
+  const daysLeft = q / rate;
+  return { rate, daysLeft, src, emptyAt: new Date(t + daysLeft * DAY) };
+}
+export const SOON_DAYS = 7;
+export function soonEmpty(p, now = new Date()) {
+  if (isLowStock(p) || totalQty(p) <= 0) return null;
+  const f = forecastStock(p, now);
+  return f && f.daysLeft <= SOON_DAYS ? f : null;
 }

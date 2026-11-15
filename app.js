@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.16.2";
+const APP_VERSION = "2.17.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -112,7 +112,10 @@ function dateLabel(p) {
 const parseQ = (v) => { const n = Number(String(v ?? "").replace(",", ".").trim()); return Number.isFinite(n) ? Math.max(0, Math.round(n * 1000) / 1000) : 0; };
 const fmtQ = (n) => String(Math.round((Number(n) || 0) * 1000) / 1000).replace(".", ",");
 const qty = (p) => E.totalQty(p);
-const isLow = (p) => E.isLowStock(p);
+const isLow = (p) => E.isLowStock(p) || !!E.soonEmpty(p);
+// « vide dans ~5 j » / « vide vers le 3 déc. »
+const soonTxt = (f) => !f ? "" : f.daysLeft < 1 ? "Vide aujourd’hui ou demain" : `≈ vide dans ${Math.round(f.daysLeft)} j`;
+const SRC_TXT = { "appris": "rythme appris de vos consommations", "achats": "rythme de vos achats", "défaut": "estimation par défaut pour 2 personnes", "manuel": "durée réglée par vous" };
 const isUrgent = (p) => qty(p) > 0 && p.expiry && daysUntil(p.expiry) <= 7;
 const STATUS_LABEL = { dispo: "Disponible", bientot: "Bientôt vide", epuise: "Épuisé" };
 const unitLabel = (p, q = qty(p)) => (q > 1 ? PLURAL[p.unit] || p.unit : p.unit) || "";
@@ -249,7 +252,7 @@ function openForm(r) {
     const p = find(r.arg);
     if (!p) { ui.form = null; return; }
     ui.form = { id: p.id, name: p.name || "", detail: p.detail || "", categoryId: p.categoryId || "alim", unit: p.unit || "pièce",
-      minQuantity: parseQ(p.minQuantity), lowAlert: p.lowAlert !== false, trackingMode: p.trackingMode || "quantity", packSize: p.packSize || "" };
+      minQuantity: parseQ(p.minQuantity), lowAlert: p.lowAlert !== false, trackingMode: p.trackingMode || "quantity", packSize: p.packSize || "", daysPerUnit: p.daysPerUnit || "" };
     if (r.params.get("lot") === "1") ui.lotSheet = { kind: "add", toLoc: p.homeLoc || (E.fefo(E.lotsOf(p))[0] || {}).loc || E.defaultLocFor(p.categoryId), qty: parseQ(p.packSize) || 1, expiryType: "DLC", dateText: "", expiry: "" };
   } else {
     const cat = CAT[r.params.get("cat")] ? r.params.get("cat") : "alim";
@@ -268,6 +271,7 @@ async function saveForm() {
     name, detail: f.detail.trim(), categoryId: f.categoryId, unit: f.unit,
     minQuantity: parseQ(f.minQuantity), lowAlert: !!f.lowAlert, trackingMode: f.trackingMode,
     packSize: parseQ(f.packSize) || null,
+    daysPerUnit: parseQ(f.daysPerUnit) || null,
     ...(f.id ? {} : { homeLoc: f.loc }),
   };
   ui.busy = true; render();
@@ -345,12 +349,14 @@ function shoppingItems() {
     }
     const active = doc && (st === "todo" || st === "bought") && (doc.forced || low);
     if (!low && !active) continue;
-    const suggest = Math.max(1, Math.round((parseQ(p.minQuantity) - qty(p) + 1) * 1000) / 1000);
+    const soon = E.soonEmpty(p);
+    const suggest = soon ? (["g", "kg", "ml", "cl", "l"].includes(String(p.unit).toLowerCase()) ? E.round3(soon.rate * 21) : Math.max(1, Math.ceil(soon.rate * 21 - qty(p))))
+      : Math.max(1, Math.round((parseQ(p.minQuantity) - qty(p) + 1) * 1000) / 1000);
     const stale = st === "stored" || st === "cancelled";
     items.push({
       id: `p_${p.id}`, product: p, label: p.name, categoryId: p.categoryId, unit: p.unit || "",
       qty: !stale && doc?.qty != null ? doc.qty : (parseQ(p.packSize) || suggest), state: stale ? "todo" : st, checked: !stale && st === "bought",
-      why: [low ? (qty(p) === 0 ? "Épuisé" : `Il en reste ${fmtQ(qty(p))} · seuil ${fmtQ(parseQ(p.minQuantity))}`) : "", stale ? "" : src(doc)].filter(Boolean).join(" · ") || "Ajouté depuis le scan",
+      why: [low ? (qty(p) === 0 ? "Épuisé" : soon ? `Il en reste ${fmtQ(qty(p))} · ${soonTxt(soon)}` : `Il en reste ${fmtQ(qty(p))} · seuil ${fmtQ(parseQ(p.minQuantity))}`) : "", stale ? "" : src(doc)].filter(Boolean).join(" · ") || "Ajouté depuis le scan",
     });
   }
   for (const d of shopping) {
@@ -643,6 +649,7 @@ function viewForm(r) {
         <span class="switch"></span>
       </button>
       ${f.lowAlert && f.trackingMode !== "status" ? `<div class="row-between" style="padding:8px 8px 10px 16px;border-top:1px solid var(--soft)"><span class="t">M’alerter quand il en reste</span>${stepper("minQuantity", f.minQuantity, "Seuil")}</div>` : ""}
+      ${f.lowAlert && f.trackingMode !== "status" ? forecastBlock(f) : ""}
     </div>
     ${ui.formError ? `<p class="err" role="alert">${esc(ui.formError)}</p>` : ""}
     ${f.id ? `<button type="button" class="danger-btn${ui.deleteArmed ? " armed" : ""}" data-act="delete">${ui.deleteArmed ? "Touchez encore pour supprimer" : "Supprimer ce produit"}</button>` : ""}
@@ -651,6 +658,19 @@ function viewForm(r) {
   ${sheet}`;
 }
 
+// Prévision de rupture sur la fiche produit + durée réglable à la main.
+function forecastBlock(f) {
+  const p = f.id ? find(f.id) : null;
+  const fc = p ? E.forecastStock({ ...p, daysPerUnit: parseQ(f.daysPerUnit) || null }) : null;
+  const massVol = ["g", "kg", "ml", "cl", "l"].includes(String(f.unit).toLowerCase());
+  const perUnit = fc ? (massVol ? `${fmtQ(E.round3(fc.rate * 7))} ${esc(f.unit)} / semaine` : `1 ${esc(f.unit)} ≈ ${Math.max(1, Math.round(1 / fc.rate))} j`) : "";
+  return `<div style="padding:8px 8px 10px 16px;border-top:1px solid var(--soft);display:flex;flex-direction:column;gap:6px">
+    <span class="t">Prévision</span>
+    <span class="s">${fc ? `${perUnit} · ${soonTxt(fc)}${fc.daysLeft >= 1 ? ` (vers le ${frDate(fc.emptyAt.toISOString().slice(0, 10)).slice(0, 5)})` : ""}<br>${SRC_TXT[fc.src] || ""}. Rappel dans les courses 7 jours avant.` : "Pas encore assez d’historique : Plakardo apprendra votre rythme au fil des retraits."}</span>
+    ${massVol ? "" : `<div class="row-between"><span class="s">Durée d’1 ${esc(f.unit)} (laisser vide = automatique)</span>
+      <span style="display:flex;align-items:center;gap:6px"><input class="qinput" style="border:1px solid var(--border);width:70px" inputmode="decimal" data-field="daysPerUnit" value="${esc(f.daysPerUnit ? fmtQ(f.daysPerUnit) : "")}" placeholder="auto" aria-label="Durée en jours"><span class="s">jours</span></span></div>`}
+  </div>`;
+}
 function lotSheetHtml(p) {
   const s = ui.lotSheet;
   const lot = E.lotsOf(p).find((l) => l.id === s.lotId);
@@ -688,7 +708,7 @@ function viewAlertes() {
   const lows = products.filter(isLow).sort(byName);
   const row = (p, act, label, warn) => `<div class="list-row">
     <span class="cat-ico sm ${catCls(p.categoryId)}">${catIcon(p.categoryId, 20)}</span>
-    <a class="grow" href="#/produit/${p.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(p.name)}</span><span class="s${warn ? " warn" : ""}">${act === "inc" ? `${qty(p)} ${esc(unitLabel(p))} · seuil ${Number(p.minQuantity) || 0}` : dateLabel(p)}</span></a>
+    <a class="grow" href="#/produit/${p.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(p.name)}</span><span class="s${warn ? " warn" : ""}">${act === "inc" ? (E.soonEmpty(p) ? `${fmtQ(qty(p))} ${esc(unitLabel(p))} · ${soonTxt(E.soonEmpty(p))}` : `${qty(p)} ${esc(unitLabel(p))} · seuil ${Number(p.minQuantity) || 0}`) : dateLabel(p)}</span></a>
     <button class="out-btn" data-act="${act}" data-id="${p.id}">${label}</button>
   </div>`;
   let body;
@@ -700,7 +720,7 @@ function viewAlertes() {
       : `<p class="empty-state">Aucune date proche. Tout va bien.</p>`;
   } else {
     body = lows.length
-      ? `<a class="out-btn" href="#/courses" style="align-self:flex-start;display:inline-flex;align-items:center;text-decoration:none">Voir la liste de courses</a><section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Sous le seuil (${lows.length})</h2><div class="card list">${lows.map((p) => row(p, "inc", "+1", qty(p) === 0)).join("")}</div></section>`
+      ? `<a class="out-btn" href="#/courses" style="align-self:flex-start;display:inline-flex;align-items:center;text-decoration:none">Voir la liste de courses</a><section style="display:flex;flex-direction:column;gap:8px"><h2 class="eyebrow">Sous le seuil ou bientôt vide (${lows.length})</h2><div class="card list">${lows.map((p) => row(p, "inc", "+1", qty(p) === 0)).join("")}</div></section>`
       : `<p class="empty-state">Aucun stock bas.</p>`;
   }
   return `<main class="screen">
@@ -882,11 +902,102 @@ function viewLieu(locId) {
   return `<main class="screen">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a>
       <div class="grow"><h1 style="font-size:26px">${esc(l.name)}</h1><span class="sub">${plural(list.length, "produit", "produits")} · date la plus proche d’abord</span></div></div>
+    <a class="out-btn" href="#/inventaire/${locId}" data-act="inv-start" style="display:flex;align-items:center;justify-content:space-between;text-decoration:none;padding:0 14px">
+      <span style="display:flex;align-items:center;gap:8px">${svg('<path d="M9 4h6v3H9zM6 6h12v15H6z"/><path d="M9 12l2 2 4-4"/>', 18)} Faire l’inventaire</span>
+      <span class="s">${meta.inventory?.[locId] ? `dernier il y a ${Math.max(0, Math.round((Date.now() - meta.inventory[locId]) / 86400000))} j` : "jamais fait"}</span></a>
     <div class="chips">${chip("tout", "Tout")}${chip("date", "Date proche")}${chip("ouverts", "Ouverts")}${chip("statut", "Suivi par statut")}</div>
     <div class="card list">${list.length ? list.map(row).join("") : `<p class="empty-state">Rien ici pour l’instant.</p>`}</div>
   </main>${ui.toast ? "" : `<a class="fab" href="#/ajout?loc=${locId}">${I.plus(20)}Ajouter</a>`}${nav("placards")}`;
 }
 
+// ───────── Inventaire rapide d'un lieu ─────────
+const MASSVOL = ["g", "kg", "ml", "cl", "l"];
+function invProducts(locId) {
+  return products.filter((p) => E.lotsOf(p).some((l) => l.loc === locId && Number(l.qty) > 0) || (p.homeLoc === locId && !E.isAvailable(p)) || (E.isStatusMode(p) && (p.homeLoc === locId || E.lotsOf(p).some((l) => l.loc === locId))))
+    .sort((x, y) => (CATS.findIndex((c) => c.id === x.categoryId) - CATS.findIndex((c) => c.id === y.categoryId)) || byName(x, y));
+}
+function viewInventaire(locId) {
+  const l = locations().find((x) => x.id === locId);
+  if (!l) return viewStocks();
+  if (!ui.inv || ui.inv.loc !== locId) ui.inv = { loc: locId, ids: invProducts(locId).map((p) => p.id), i: 0, vals: {}, end: false };
+  const s = ui.inv;
+  const list = s.ids.map(find).filter(Boolean);
+  const cur = (p) => E.isStatusMode(p) ? E.statusOf(p) : E.round3(E.qtyIn(p, locId));
+  const val = (p) => (s.vals[p.id] !== undefined ? s.vals[p.id] : cur(p));
+  const changed = list.filter((p) => s.vals[p.id] !== undefined && s.vals[p.id] !== cur(p));
+  const head = `<div class="top"><a class="icon-btn" href="#/lieu/${locId}" data-act="inv-quit" aria-label="Quitter">${I.back(22)}</a>
+      <div class="grow"><h1 style="font-size:24px">Inventaire</h1><span class="sub">${esc(l.name)}</span></div></div>`;
+  if (!list.length) return `<main class="screen no-nav">${head}<p class="empty-state">Aucun produit enregistré ici.</p><a class="cta" href="#/ajout?loc=${locId}">Ajouter un produit</a></main>`;
+  if (s.end || s.i >= list.length) {
+    return `<main class="screen no-nav">${offlineBanner()}${head}
+      <section class="card" style="padding:16px;display:flex;flex-direction:column;gap:6px;text-align:center">
+        <span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:22px">${changed.length ? plural(changed.length, "changement", "changements") : "Tout était juste"}</span>
+        <span class="s">${plural(list.length - changed.length, "produit confirmé", "produits confirmés")}</span></section>
+      ${changed.length ? `<div class="card list">${changed.map((p) => `<div class="list-row"><span class="grow"><span class="t">${esc(p.name)}</span></span>
+        <span class="s">${E.isStatusMode(p) ? `${STATUS_LABEL[cur(p)]} → <strong>${STATUS_LABEL[val(p)]}</strong>` : `${fmtQ(cur(p))} → <strong>${fmtQ(val(p))}</strong> ${esc(unitLabel(p, val(p)))}`}</span></div>`).join("")}</div>` : ""}
+      <a class="out-btn" href="#/ajout?loc=${locId}" style="display:flex;align-items:center;justify-content:center;text-decoration:none">${I.plus(16)} J’ai trouvé un produit non enregistré</a>
+      <button class="link-btn" data-act="inv-prev">← Revenir au dernier produit</button>
+    </main><div class="cta-bar"><button class="cta" data-act="inv-save" ${ui.busy ? "disabled" : ""}>${changed.length ? "Enregistrer l’inventaire" : "Terminer"}</button></div>`;
+  }
+  const p = list[s.i];
+  const v = val(p);
+  const isMod = s.vals[p.id] !== undefined && v !== cur(p);
+  const pct = Math.round((s.i / list.length) * 100);
+  let body;
+  if (E.isStatusMode(p)) {
+    body = `<span class="s">Plakardo pense : ${STATUS_LABEL[cur(p)]}</span>
+      <div class="chips" style="justify-content:center">${["dispo", "bientot", "epuise"].map((x) => `<button class="chip" data-act="inv-status" data-v="${x}" aria-pressed="${v === x}">${STATUS_LABEL[x]}</button>`).join("")}</div>`;
+  } else {
+    const step = MASSVOL.includes(String(p.unit).toLowerCase()) ? (parseQ(p.packSize) || (String(p.unit).toLowerCase() === "kg" || String(p.unit).toLowerCase() === "l" ? 0.5 : 100)) : 1;
+    body = `<span class="s">Plakardo pense : ${fmtQ(cur(p))} ${esc(unitLabel(p, cur(p)))}</span>
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px">
+        <button class="round-btn" style="width:56px;height:56px;background:var(--soft);color:var(--ink)" data-act="inv-step" data-v="${-step}" aria-label="Moins">${I.minus(22)}</button>
+        <input class="inv-q" inputmode="decimal" data-invq value="${fmtQ(v)}" aria-label="Quantité comptée">
+        <button class="round-btn" style="width:56px;height:56px;background:var(--primary);color:var(--primary-ink)" data-act="inv-step" data-v="${step}" aria-label="Plus">${I.plus(22)}</button></div>
+      <span class="s">${esc(unitLabel(p, v))}</span>`;
+  }
+  return `<main class="screen no-nav">${offlineBanner()}${head}
+    <div class="inv-bar"><span style="width:${pct}%"></span></div>
+    <div class="row-between"><span class="s">Produit ${s.i + 1} / ${list.length}</span><button class="link-btn" style="min-height:28px" data-act="inv-finish">Terminer</button></div>
+    <section class="card" style="padding:22px 16px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center">
+      <span class="cat-ico ${catCls(p.categoryId)}">${catIcon(p.categoryId, 26)}</span>
+      <span style="font-family:Nunito,sans-serif;font-weight:900;font-size:24px;line-height:1.15">${esc(p.name)}</span>
+      ${p.detail ? `<span class="s">${esc(p.detail)}</span>` : ""}
+      ${body}
+    </section>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="out-btn" data-act="inv-empty">Vide</button>
+      <button class="cta" style="height:52px" data-act="inv-ok">${isMod ? "Valider" : "✓ C’est juste"}</button></div>
+    ${s.i > 0 ? `<button class="link-btn" data-act="inv-prev">← Précédent</button>` : ""}
+    ${changed.length ? `<span class="s" style="text-align:center">${plural(changed.length, "correction", "corrections")} pour l’instant</span>` : ""}
+  </main>`;
+}
+async function saveInventory() {
+  const s = ui.inv; if (!s || !canWrite()) return;
+  const loc = s.loc;
+  const lines = [];
+  for (const id of s.ids) {
+    const p = find(id); if (!p || s.vals[id] === undefined) continue;
+    const nv = s.vals[id];
+    if (E.isStatusMode(p)) { if (nv !== E.statusOf(p)) lines.push({ kind: "status", productId: id, status: nv }); continue; }
+    const cur = E.round3(E.qtyIn(p, loc));
+    const d = E.round3(nv - cur);
+    if (!d) continue;
+    if (d < 0) lines.push({ kind: "remove", productId: id, amount: -d, loc });
+    else {
+      const lot = E.lotsOf(p).filter((l) => l.loc === loc).sort((x, y) => (y.expiry || "9999").localeCompare(x.expiry || "9999"))[0];
+      if (lot) lines.push({ kind: "correct", productId: id, lotId: lot.id, qty: E.round3(Number(lot.qty) + d) });
+      else lines.push({ kind: "add", productId: id, amount: d, loc });
+    }
+  }
+  ui.busy = true; render();
+  try {
+    if (lines.length) { const r = await op("inventory", `Inventaire · ${locName(loc)} (${plural(lines.length, "correction", "corrections")})`, lines); if (!r) return; }
+    else showToast(`Inventaire · ${locName(loc)} : tout était juste`);
+    store.setMeta("inventory", { ...(meta.inventory || {}), [loc]: Date.now() }).catch(() => {});
+    ui.inv = null; go(`#/lieu/${loc}`);
+  } finally { ui.busy = false; render(); }
+}
 function viewCategories() {
   return `<main class="screen no-nav">${offlineBanner()}
     <div class="top"><a class="icon-btn" href="#/placards" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Catégories</h1><span class="sub">Ajouter, renommer, réordonner</span></div></div>
@@ -2281,6 +2392,7 @@ function render() {
     switch (r.name) {
       case "placards": html = viewStocks(); break;
       case "lieu": html = viewLieu(r.arg); break;
+      case "inventaire": html = viewInventaire(r.arg); break;
       case "lieux": html = viewLieux(); break;
       case "categories": html = viewCategories(); break;
       case "ajouter": html = viewAjouter(); break;
@@ -2563,6 +2675,15 @@ app.addEventListener("click", (e) => {
       showToast(`${plural(n, "besoin ajouté", "besoins ajoutés")} aux courses`); go("#/courses"); break;
     }
     case "shoptab": ui.shopTab = v; render(); break;
+    case "inv-step": if (ui.inv) { const p = find(ui.inv.ids[ui.inv.i]); if (p) { const c = ui.inv.vals[p.id] !== undefined ? ui.inv.vals[p.id] : E.round3(E.qtyIn(p, ui.inv.loc)); ui.inv.vals[p.id] = Math.max(0, E.round3(c + Number(v))); render(); } } break;
+    case "inv-status": if (ui.inv) { ui.inv.vals[ui.inv.ids[ui.inv.i]] = v; render(); } break;
+    case "inv-ok": if (ui.inv) { const el = document.querySelector("[data-invq]"); const p = find(ui.inv.ids[ui.inv.i]); if (el && p && !E.isStatusMode(p)) { const n = parseQ(el.value); if (n !== E.round3(E.qtyIn(p, ui.inv.loc)) || ui.inv.vals[p.id] !== undefined) ui.inv.vals[p.id] = Math.max(0, n); } ui.inv.i += 1; window.scrollTo(0, 0); render(); } break;
+    case "inv-empty": if (ui.inv) { const p = find(ui.inv.ids[ui.inv.i]); if (p) ui.inv.vals[p.id] = E.isStatusMode(p) ? "epuise" : 0; ui.inv.i += 1; render(); } break;
+    case "inv-prev": if (ui.inv) { ui.inv.end = false; ui.inv.i = Math.max(0, Math.min(ui.inv.i, ui.inv.ids.length) - 1); render(); } break;
+    case "inv-finish": if (ui.inv) { ui.inv.end = true; render(); } break;
+    case "inv-quit": ui.inv = null; break;
+    case "inv-start": ui.inv = null; break;
+    case "inv-save": saveInventory(); break;
     case "shopsort": ui.shopSort = v; try { localStorage.setItem("plk-shopsort", v); } catch {} render(); break;
     case "shop-cancel": {
       const it = shoppingItems().find((x) => x.id === id); if (!it) break;
@@ -2642,6 +2763,7 @@ app.addEventListener("input", (e) => {
     else if (res) { res.textContent = "Date non reconnue"; res.style.color = "var(--warn)"; }
     return;
   }
+  if (t.matches("[data-invq]") && ui.inv) { const id = ui.inv.ids[ui.inv.i]; if (id) ui.inv.vals[id] = Math.max(0, parseQ(t.value)); return; }
   if (t.matches("[data-field]") && ui.form) {
     ui.form[t.dataset.field] = t.value;
     if (t.type === "date") render();

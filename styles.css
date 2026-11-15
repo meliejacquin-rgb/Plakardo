@@ -334,3 +334,6 @@ body.kb-open .nav, body.kb-open .cta-bar.over-nav { display: none; }
 .port-box .round-btn { width:30px; height:30px; background:var(--soft); color:var(--ink); }
 .port-n { display:flex; align-items:center; gap:3px; font-weight:800; min-width:36px; justify-content:center; color:var(--primary); }
 .round-btn.mini { width:26px; height:26px; min-height:26px; background:var(--soft); color:var(--ink); }
+.inv-bar { height:6px; border-radius:99px; background:var(--soft); overflow:hidden; }
+.inv-bar span { display:block; height:100%; background:var(--primary); border-radius:99px; transition:width .2s; }
+.inv-q { width:110px; height:64px; text-align:center; font-family:Nunito,sans-serif; font-weight:900; font-size:34px; border:1px solid var(--border); border-radius:18px; background:var(--surface); color:var(--ink); }
