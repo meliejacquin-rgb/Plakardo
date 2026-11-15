@@ -183,7 +183,7 @@ async function batchAdd(info) {
   render();
   if (!product) {
     const { template, source } = await resolveTemplate(info);
-    Object.assign(entry, { name: entry.name || template.name || "", detail: template.detail || "", categoryId: template.categoryId, unit: template.unit, source });
+    Object.assign(entry, { name: entry.name || template.name || "", detail: template.detail || "", categoryId: template.categoryId, unit: template.unit, unitSize: template.unitSize || null, unitSizeUnit: template.unitSizeUnit || null, source });
     if (open) render();
   }
 }
@@ -203,7 +203,7 @@ async function batchSave() {
       continue;
     }
     const name = b.name.trim();
-    const data = { name, detail: (b.detail || "").trim(), categoryId: b.categoryId, unit: b.unit };
+    const data = { name, detail: (b.detail || "").trim(), categoryId: b.categoryId, unit: b.unit, ...(b.unitSize ? { unitSize: b.unitSize, unitSizeUnit: b.unitSizeUnit } : {}) };
     const twin = ctx.getProducts().find((p) => p.categoryId === data.categoryId && p.name.toLowerCase() === name.toLowerCase());
     if (twin) {
       ctx.store.updateProduct(twin.id, { barcode: b.key });
@@ -236,6 +236,7 @@ async function handle(info) {
       detail: template.detail || "",
       categoryId: template.categoryId || "alim",
       unit: template.unit || "pièce",
+      unitSize: template.unitSize || null, unitSizeUnit: template.unitSizeUnit || null, nutriscore: template.nutriscore || "",
       quantity: 1,
       expiry: info.expiry || "",
       minQuantity: 1,
@@ -282,7 +283,7 @@ async function confirm() {
   // Nouveau produit
   const name = (form.name || "").trim();
   if (!name) { s.formError = "Donnez un nom au produit (une seule fois, il sera mémorisé)."; render(); return; }
-  const data = { name, detail: (form.detail || "").trim(), categoryId: form.categoryId, unit: form.unit };
+  const data = { name, detail: (form.detail || "").trim(), categoryId: form.categoryId, unit: form.unit, ...(form.unitSize ? { unitSize: form.unitSize, unitSizeUnit: form.unitSizeUnit } : {}) };
   const twin = ctx.getProducts().find((p) => p.categoryId === data.categoryId && p.name.toLowerCase() === name.toLowerCase());
   if (twin) {
     ctx.store.updateProduct(twin.id, { barcode: cur.info.key });
@@ -453,6 +454,7 @@ function sheetHtml() {
   }[cur.source];
   return `<div class="sc-sheet"><div class="sc-handle"></div>
     <p class="sc-src ${cur.source === "unknown" ? "unknown" : ""}">${srcNote}</p>
+    ${form.unitSize || form.nutriscore ? `<p class="sc-note">${form.unitSize ? `Contenance : 1 ${esc(form.unit)} = ${fmtQ(form.unitSize)} ${esc(form.unitSizeUnit)}` : ""}${form.unitSize && form.nutriscore ? " · " : ""}${form.nutriscore ? `Nutri-Score <strong>${esc(form.nutriscore)}</strong>` : ""}</p>` : ""}
     <div class="sc-field"><label class="sc-label" for="sc-name">Nom du produit</label>
       <input id="sc-name" class="input" data-sf="name" value="${esc(form.name)}" placeholder="Ex. : pâtée saumon" autocomplete="off"></div>
     <div class="sc-field"><label class="sc-label" for="sc-detail">Précision <span class="sub">(facultatif)</span></label>

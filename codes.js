@@ -80,7 +80,7 @@ export function decode(format, raw) {
 // Open Food Facts : une seule requête interroge aliments, nourriture animale, cosmétiques et autres produits.
 const TYPE_TO_CAT = { food: "alim", petfood: "chat", beauty: "hyg", product: "hyg" };
 export async function lookupOFF(ean) {
-  const fields = "product_name,product_name_fr,product_name_de,generic_name_fr,generic_name,brands,quantity,product_type";
+  const fields = "product_name,product_name_fr,product_name_de,generic_name_fr,generic_name,brands,quantity,product_quantity,product_quantity_unit,product_type,categories_tags,nutriscore_grade,packaging_tags";
   const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(ean)}.json?product_type=all&fields=${fields}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 7000);
@@ -94,8 +94,22 @@ export async function lookupOFF(ean) {
     if (!name) return null;
     const brand = (p.brands || "").split(",")[0].trim();
     const detail = [brand, (p.quantity || "").trim()].filter(Boolean).join(" · ");
-    const categoryId = TYPE_TO_CAT[p.product_type] || "alim";
-    return { name, detail, categoryId, unit: categoryId === "chat" ? "boîte" : "pièce" };
+    const tags = (p.categories_tags || []).join(" ") + " " + (p.packaging_tags || []).join(" ");
+    let categoryId = TYPE_TO_CAT[p.product_type] || "alim";
+    if (/pet-food|cat-food|aliments-pour-chats|katzen/.test(tags)) categoryId = "chat";
+    // Unité de suivi et contenance (1 boîte = 400 g, 1 brique = 1 L…)
+    let unit = categoryId === "chat" ? "boîte" : "pièce";
+    if (/canned|conserve|en:cans|can\b/.test(tags)) unit = "boîte";
+    else if (/beverages|boissons|milks|laits|juices|jus/.test(tags)) unit = /tetra|brick|brique|carton/.test(tags) ? "brique" : "bouteille";
+    else if (/yogurts|yaourts|creams|cremes/.test(tags)) unit = "pot";
+    else if (/pastas|pates|rices|riz|flours|farines|cereals|cereales|biscuits/.test(tags)) unit = "paquet";
+    else if (/sachet|bag/.test(tags)) unit = "sachet";
+    const qn = Number(p.product_quantity);
+    let su = String(p.product_quantity_unit || "").toLowerCase();
+    let unitSize = null, unitSizeUnit = null;
+    if (qn > 0 && ["g", "kg", "ml", "cl", "l"].includes(su)) { unitSize = qn; unitSizeUnit = su === "l" ? "L" : su; }
+    const nutri = (p.nutriscore_grade || "").toUpperCase();
+    return { name, detail, categoryId, unit, unitSize, unitSizeUnit, nutriscore: /^[A-E]$/.test(nutri) ? nutri : "", brand };
   } catch {
     return null;
   } finally {

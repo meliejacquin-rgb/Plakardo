@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.19.0";
+const APP_VERSION = "3.0.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -28,7 +28,7 @@ function applyCats() {
   for (const c of CATS) CAT[c.id] = c;
 }
 const UNITS = ["pièce", "paquet", "boîte", "brique", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
-const PLURAL = { pièce: "pièces", paquet: "paquets", boîte: "boîtes", bouteille: "bouteilles", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", pot: "pots", rouleau: "rouleaux", g: "g", kg: "kg", ml: "ml", cl: "cl", L: "L" };
+const PLURAL = { portion: "portions", pièce: "pièces", paquet: "paquets", boîte: "boîtes", bouteille: "bouteilles", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", pot: "pots", rouleau: "rouleaux", g: "g", kg: "kg", ml: "ml", cl: "cl", L: "L" };
 
 const svg = (body, size = 24, sw = 1.8) =>
   `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
@@ -506,11 +506,51 @@ function viewHome() {
     <label class="search">${I.search(20)}<span class="sr">Rechercher un produit</span>
       <input id="search" type="search" data-search placeholder="Rechercher un produit…" value="${esc(ui.search)}" autocomplete="off">
     </label>
+    <a class="card shop-entry" href="#/semaine"${new Date().getDay() === 0 ? ' style="border:2px solid var(--primary)"' : ""}><span class="cat-ico" style="background:var(--mint-soft);color:var(--mint-ink)">${svg('<rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M9 3v3M15 3v3M8 13h3M8 17h6"/>', 22)}</span>
+      <span class="grow"><span class="t">${new Date().getDay() === 0 ? "Le point du dimanche" : "Ma semaine en un coup d’œil"}</span><span class="s">Ce qui périme, ce qui manque, menu et budget</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>
     ${dataError ? `<p class="err">${esc(dataError)}</p>` : ""}
     <div id="home-body" style="display:flex;flex-direction:column;gap:18px">${homeBody()}</div>
   </main>${nav("accueil")}`;
 }
 
+// ───────── Le point du dimanche : la semaine en un coup d'œil ─────────
+function viewSemaine() {
+  const DAYS_SHORT = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+  const dayOf = (iso) => { const [y, m, d] = iso.split("-").map(Number); return DAYS_SHORT[new Date(y, m - 1, d).getDay()]; };
+  const lo = leftovers();
+  const prio = E.priorityList(products).filter((x) => !x.product.leftover);
+  const seen = new Set(); const prioU = prio.filter((x) => !seen.has(x.product.id) && seen.add(x.product.id)).slice(0, 6);
+  const lows = products.filter(isLow).map((p) => ({ p, f: E.soonEmpty(p) })).sort((x, y) => (x.f ? x.f.daysLeft : -1) - (y.f ? y.f.daysLeft : -1)).slice(0, 8);
+  const menu = menuEntries();
+  if (!menu.length && !ui.weekPreview) ui.weekPreview = E.planWeek(BOOK, products, { days: 5, perDay: 1, filters: { ...ui.recFilters, portions: defPortions() }, prefs: prefs(), seed: 7 });
+  const preview = menu.length ? null : ui.weekPreview || [];
+  const previewNeeds = preview ? E.computeNeeds(preview.map((x) => ({ recipe: x.recipe, portions: defPortions() })), products).filter((L) => L.mode === "buy" || L.mode === "suggest").length : 0;
+  // Budget du mois et gaspillage de la semaine
+  const month = E.todayIso().slice(0, 7);
+  const undone = new Set(ops.filter((o) => o.compensatedBy).map((o) => o.id));
+  const spent = purchases.filter((pu) => pu.kind !== "waste" && (pu.date || "").slice(0, 7) === month).reduce((n, pu) => n + Number(pu.total || 0), 0);
+  const budget = Number(meta.prefs?.budget) || 0;
+  const wk = weekStart(E.todayIso());
+  const prevWk = (() => { const [y, m, d] = wk.split("-").map(Number); const x = new Date(y, m - 1, d - 7); return localDate(x); })();
+  const wasteOf = (w) => purchases.filter((pu) => pu.kind === "waste" && !undone.has(pu.opId) && pu.date && weekStart(pu.date) === w).reduce((n, pu) => n + Number(pu.total || 0), 0);
+  const wNow = wasteOf(wk), wPrev = wasteOf(prevWk);
+  const d = new Date();
+  const title = `${["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"][d.getDay()]} ${d.getDate()} ${["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][d.getMonth()]}`;
+  const card = (eyebrow, body) => `<section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">${eyebrow}</span>${body}</section>`;
+  return `<main class="screen no-nav">${offlineBanner()}
+    <div class="top"><a class="icon-btn" href="#/" aria-label="Retour">${I.back(22)}</a><div class="grow"><span class="brand">${title}</span><h1 style="font-size:26px">Votre semaine</h1></div></div>
+    ${lo.length ? card("Restes à finir", lo.map((p) => `<a class="row-between" href="#/produit/${p.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(p.name.replace(/^Reste · /, ""))}</span><span class="s warn">${p.expiry ? `avant ${dayOf(p.expiry)}` : ""}</span></a>`).join("")) : ""}
+    ${card("À finir vite", prioU.length ? prioU.map((x) => `<a class="row-between" href="#/produit/${x.product.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(x.product.name)}</span><span class="s${x.days <= 2 ? " warn" : ""}">${x.days <= 0 ? "aujourd’hui" : dayOf(x.lot.expiry) + " " + frDate(x.lot.expiry).slice(0, 5)}</span></a>`).join("") : `<span class="s">Rien ne périme dans les 7 jours.</span>`)}
+    ${card("Va bientôt manquer", lows.length ? lows.map(({ p, f }) => `<a class="row-between" href="#/produit/${p.id}" style="text-decoration:none;color:inherit"><span class="t">${esc(p.name)}</span><span class="s">${qty(p) === 0 || (E.isStatusMode(p) && E.statusOf(p) === "epuise") ? "épuisé" : f ? soonTxt(f) : "sous le seuil"}</span></a>`).join("") + `<a class="link-btn" href="#/courses" style="align-self:flex-start">Tout est dans la liste de courses ›</a>` : `<span class="s">Rien ne va manquer cette semaine.</span>`)}
+    ${menu.length ? card("Menu en cours", sortByDay(menu).slice(0, 7).map((e) => `<a class="row-between" href="#/recette/${encodeURIComponent(e.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${e.day ? esc(e.day.slice(0, 3)) + ". " : ""}${esc(e.recipe.title)}</span><span class="s">${plural(e.portions || defPortions(), "portion", "portions")}</span></a>`).join(""))
+      : card("Menu proposé · avec ce qui périme", (preview.length ? preview.map((x) => `<a class="row-between" href="#/recette/${encodeURIComponent(x.recipe.id)}" style="text-decoration:none;color:inherit"><span class="t">${x.day ? esc(x.day.slice(0, 3)) + ". " : ""}${esc(x.recipe.title)}</span></a>`).join("") + `<span class="s">${previewNeeds ? `${plural(previewNeeds, "article", "articles")} à acheter` : "Tout est déjà dans vos placards"} · <button class="link-btn" style="min-height:24px;padding:0" data-act="wk-reroll">Autre proposition</button></span>` : `<span class="s">Pas assez de recettes compatibles avec vos filtres.</span>`))}
+    ${card(`Budget ${["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"][d.getMonth()]}`, `
+      <div class="row-between"><strong class="h" style="font-size:20px">${euro(spent)}${budget ? ` <span class="s">/ ${euro(budget)}</span>` : ""}</strong>
+        <form id="wk-budget" style="display:flex;gap:6px;align-items:center"><input class="qinput" style="border:1px solid var(--border);width:76px" inputmode="decimal" name="b" value="${budget ? fmtQ(budget) : ""}" placeholder="budget" aria-label="Budget mensuel"><button class="out-btn" style="height:36px;padding:0 10px">OK</button></form></div>
+      ${budget ? `<div class="bar" style="height:8px;border-radius:9px;background:var(--soft);overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, Math.round((spent / budget) * 100))}%;background:${spent > budget ? "var(--warn)" : "var(--mint-ink)"}"></span></div>` : ""}
+      <span class="s">Gaspillage cette semaine : ${euro(wNow)}${wPrev > 0 ? ` (${wNow <= wPrev ? "−" : "+"}${Math.abs(Math.round(((wNow - wPrev) / wPrev) * 100))} % vs semaine dernière)` : ""}</span>`)}
+  </main>${!menu.length && preview.length ? `<div class="cta-bar"><button class="cta" data-act="wk-validate" ${ui.busy ? "disabled" : ""}>Valider ce menu et la liste de courses</button></div>` : ""}`;
+}
 function viewPlacards() {
   return `<main class="screen">
     <h1>Placards</h1>
@@ -764,6 +804,7 @@ function viewProfil() {
         <button class="out-btn" style="height:38px;padding:0 14px">Renommer</button></form>
     </section>
     ${isAdminHH() ? `<a class="card shop-entry" href="#/admin"><span class="cat-ico" style="background:var(--soft);color:var(--primary)">${svg('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/><path d="M18 3l3 3-3 3"/>', 22)}</span><span class="grow"><span class="t">Administration</span><span class="s">Ouvrir Plakardo à d’autres foyers</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>` : ""}
+    <a class="card shop-entry" href="#/siri"><span class="cat-ico" style="background:var(--soft);color:var(--primary)">${svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', 22)}</span><span class="grow"><span class="t">Raccourci Siri</span><span class="s">« Dis Siri, Plakardo, ajoute du lait »</span></span>${svg('<path d="M9 5l7 7-7 7"/>', 20, 2.2)}</a>
     <section style="display:flex;flex-direction:column;gap:8px">
       <h2 class="eyebrow">Confort</h2>
       <div class="card" style="overflow:hidden">
@@ -1320,6 +1361,52 @@ if (window.visualViewport) window.visualViewport.addEventListener("resize", () =
 });
 window.addEventListener("error", (e) => { try { showToast("Erreur : " + e.message); render(); } catch {} });
 window.addEventListener("unhandledrejection", (e) => { try { const m = e.reason?.message || String(e.reason || ""); if (m && !/abort|network|fetch/i.test(m)) { showToast("Erreur : " + m); render(); } } catch {} });
+// ───────── Raccourci Siri : #/vocal?t=… (texte dicté, ajouté sans rien toucher) ─────────
+function vocalIntent(raw) {
+  let t = String(raw || "").trim();
+  const n = E.normTxt(t);
+  const stock = /^(plakardo )?(j ai|on a|nous avons) (achete|pris|range)|^(plakardo )?(range|ajoute au stock|dans le placard)/.test(n);
+  t = t.replace(/^\s*(dis siri[, ]*)?(plakardo[ ,:]*)?/i, "")
+    .replace(/^(j['’]ai|on a|nous avons)\s+(achet[ée]s?|pris|rang[ée]s?)\s*/i, "")
+    .replace(/^(ajoute[rz]?|rajoute[rz]?|mets?|note[rz]?|il faut|ach[eè]te[rz]?)\s+/i, "")
+    .replace(/^(on n['’]a plus d[e']|il n['’]y a plus d[e']|plus d[e'])\s*/i, "")
+    .replace(/\s+(à|a|sur|dans)\s+(la\s+)?(liste( de courses)?|les courses|mes courses)\s*$/i, "")
+    .replace(/\s+(au|dans le)\s+(stock|placard)\s*$/i, "");
+  return { target: stock ? "stock" : "courses", text: t.trim() };
+}
+function viewSiri() {
+  const base = `${location.origin}${location.pathname}#/vocal?t=`;
+  const step = (n, t, s) => `<div class="list-row" style="align-items:flex-start"><span class="cat-ico sm" style="background:var(--primary);color:#fff;font-weight:900">${n}</span><span class="grow"><span class="t">${t}</span><span class="s">${s}</span></span></div>`;
+  return `<main class="screen no-nav">
+    <div class="top"><a class="icon-btn" href="#/profil" aria-label="Retour">${I.back(22)}</a><div class="grow"><h1 style="font-size:26px">Raccourci Siri</h1><span class="sub">« Dis Siri, Plakardo » · à faire une fois par iPhone</span></div></div>
+    <div class="card list">
+      ${step(1, "Ouvrez l’app Raccourcis", "Touchez + en haut à droite.")}
+      ${step(2, "Ajoutez l’action « Dicter le texte »", "Langue : Français. Arrêter l’écoute : après une pause.")}
+      ${step(3, "Ajoutez l’action « Encoder en URL »", "Elle prend automatiquement le texte dicté.")}
+      ${step(4, "Ajoutez l’action « Texte »", "Collez l’adresse ci-dessous, puis à la fin insérez la variable « Texte encodé en URL ».")}
+      ${step(5, "Ajoutez l’action « Ouvrir les URL »", "")}
+      ${step(6, "Nommez le raccourci « Plakardo »", "Touchez le nom en haut. Ensuite : « Dis Siri, Plakardo », puis dictez.")}
+    </div>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Adresse à coller (étape 4)</span>
+      <span style="font-family:ui-monospace,monospace;font-size:13px;overflow-wrap:anywhere">${esc(base)}</span>
+      <button class="cta" style="height:46px" data-act="siri-copy" data-v="${esc(base)}">Copier l’adresse</button></section>
+    <section class="card" style="padding:14px;display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Ce que vous pouvez dire</span>
+      <span class="s">« Ajoute du lait et 2 paquets de pâtes » → liste de courses<br>« On n’a plus de dentifrice » → liste de courses<br>« J’ai acheté 6 œufs et du beurre » → rangement dans le stock (écran de vérification)</span></section>
+    <p class="s">Bon à savoir : le raccourci ouvre Plakardo dans Safari. Connectez-vous une fois dans Safari avec le même compte. L’iPhone doit être déverrouillé.</p>
+    <a class="out-btn" href="#/vocal?t=${encodeURIComponent("ajoute du lait")}&k=test" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Tester : « ajoute du lait »</a>
+  </main>`;
+}
+function viewVocal(r) {
+  const raw = r.params.get("t") || "";
+  const key = raw + "|" + (r.params.get("k") || "");
+  if (loaded && raw && ui.vocalKey !== key) {
+    ui.vocalKey = key;
+    const v = vocalIntent(raw);
+    ui.qa = { ...(ui.qa || {}), text: v.text, target: v.target };
+    setTimeout(() => quickAddGo(), 0);
+  }
+  return `<div class="splash"><img src="icons/icon-192.png" alt="" width="96" height="96"><p>${raw ? `« ${esc(raw)} »` : "Rien à ajouter"}</p></div>`;
+}
 async function quickAddGo() {
   if (!(ui.qa.text || "").trim()) { showToast("Dictez ou tapez d’abord vos produits"); render(); return; }
   const r = parsePhrase(ui.qa.text);
@@ -1468,14 +1555,47 @@ async function cookGo() {
   const id = newOpId();
   try {
     await store.runOp({ id, type: "cook", label: `Je cuisine · ${ui.cookLabel || "Préparation"}`, by: me(), lines });
+    const label = ui.cookLabel || "";
     ui.cook = []; ui.cookConfirm = false; ui.cookLabel = "";
     showToast("Préparation enregistrée, stocks mis à jour", () => undoOp(id));
-    go("#/");
+    ui.leftover = { label: label || "Plat maison", n: 1, loc: locations().find((l) => l.id === "frigo") ? "frigo" : (locations()[0] || {}).id, days: 3 };
+    go("#/reste");
   } catch (e) {
     ui.cookError = e?.message || "Validation impossible.";
   } finally { ui.busy = false; render(); }
 }
 
+// ───────── Les restes : après avoir cuisiné, ranger ce qui reste avec une date courte ─────────
+const leftovers = () => products.filter((p) => p.leftover && qty(p) > 0).sort((x, y) => (x.expiry || "9999").localeCompare(y.expiry || "9999"));
+function viewReste() {
+  const s = ui.leftover;
+  if (!s) { go("#/"); return ""; }
+  const until = addToToday({ days: s.days });
+  return `<main class="screen no-nav">
+    <div class="top"><div class="grow"><h1 style="font-size:26px">Bon appétit !</h1><span class="sub">${esc(s.label)} · stocks mis à jour</span></div></div>
+    <section class="card" style="padding:16px;display:flex;flex-direction:column;gap:14px;border:2px solid var(--primary)">
+      <span class="t" style="font-family:Nunito,sans-serif;font-weight:900;font-size:20px">Il en reste ?</span>
+      <div class="chips">${[1, 2, 3, 4].map((n) => `<button class="chip" data-act="lo-n" data-v="${n}" aria-pressed="${s.n === n}">${plural(n, "portion", "portions")}</button>`).join("")}</div>
+      <span class="label">Ranger dans</span>
+      <div class="chips">${locations().map((l) => `<button class="chip sm" data-act="lo-loc" data-v="${l.id}" aria-pressed="${s.loc === l.id}">${esc(l.name)}</button>`).join("")}</div>
+      <span class="label">À manger avant</span>
+      <div class="chips">${[[2, "2 jours"], [3, "3 jours"], [4, "4 jours"], [60, "Congelé · 2 mois"]].map(([d, t]) => `<button class="chip sm" data-act="lo-days" data-v="${d}" aria-pressed="${s.days === d}">${t}</button>`).join("")}</div>
+      <span class="s">Jusqu’au ${frDate(until)} · apparaîtra dans les alertes et en tête des recettes.</span>
+      <button class="cta" data-act="lo-save" ${ui.busy ? "disabled" : ""}>Ranger le reste</button>
+    </section>
+    <button class="out-btn" data-act="lo-none">Non, tout est mangé</button>
+  </main>`;
+}
+async function saveLeftover() {
+  const s = ui.leftover; if (!s || !canWrite()) return;
+  ui.busy = true; render();
+  try {
+    await store.addProduct({ name: `Reste · ${s.label}`, detail: "", categoryId: "alim", unit: "portion", quantity: s.n, loc: s.loc, expiry: addToToday({ days: s.days }), expiryType: "DLC", minQuantity: 0, lowAlert: false, trackingMode: "quantity", leftover: true, homeLoc: s.loc, updatedBy: me() });
+    showToast(`Reste rangé : ${plural(s.n, "portion", "portions")}`);
+    ui.leftover = null; go("#/");
+  } catch (e) { showToast(e?.message || "Impossible"); }
+  finally { ui.busy = false; render(); }
+}
 function viewHistorique(r) {
   const pid = r.params.get("p");
   const list = pid ? ops.filter((o) => (o.lines || []).some((l) => l.productId === pid)) : ops;
@@ -1640,7 +1760,10 @@ function viewRecettes() {
     const almost = scored.filter((x) => x.missing > 0 && x.missing <= 2).map((x) => x.recipe);
     const favs = recipes.filter(isFav).map((r) => (r.builtin && BOOK_BY_ID.get(r.id)) || R(r));
     const prioLine = prio.length ? `<span class="s" style="color:var(--mint-ink)">À finir vite : ${esc(prio.map((x) => x.product.name).join(", "))}</span>` : "";
-    body = `${prioLine}
+    const lo = leftovers();
+    const loCard = lo.length ? `<section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:6px;border-color:var(--warn)"><span class="eyebrow" style="color:var(--warn)">Restes à finir d’abord</span>
+      ${lo.map((p) => `<a href="#/produit/${p.id}" style="text-decoration:none;color:inherit" class="row-between"><span class="t">${esc(p.name.replace(/^Reste · /, ""))}</span><span class="s">${plural(qty(p), "portion", "portions")}${p.expiry ? ` · avant le ${frDate(p.expiry).slice(0, 5)}` : ""}</span></a>`).join("")}</section>` : "";
+    body = `${loCard}${prioLine}
       ${rail("Avec mes stocks", scored.slice(0, 12).map((x) => x.recipe), "", ready.length ? `· ${ready.length} prêtes` : "· les plus proches")}
       ${rail("★ Mes favoris", favs)}
       ${bookThemes().map(([t, n]) => rail(esc(t), scored.filter((x) => x.recipe.theme === t).map((x) => x.recipe),
@@ -1910,6 +2033,80 @@ function viewMenu() {
 
 // ---- Courses à états + rangement ----
 const shopState = (it) => it.state || (it.checked ? "bought" : "todo");
+// ───────── Mode « en magasin » : liste plein écran, grosses cases, écran allumé ─────────
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener?.("release", () => { wakeLock = null; }); }
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && route().name === "magasin") keepAwake(true); });
+const rayonKey = (it) => (it.product && it.categoryId && it.categoryId !== "alim") ? "c:" + it.categoryId : "r:" + E.rayonOf(it.label);
+function viewMagasin() {
+  keepAwake(true);
+  const items = shoppingItems().filter((it) => ["todo", "bought"].includes(shopState(it)));
+  const done = items.filter((it) => shopState(it) === "bought").length;
+  const groups = [...E.RAYONS.filter((r) => r !== "Autres courses").map((r) => ({ t: r, id: "r:" + r })), ...CATS.filter((c) => c.id !== "alim").map((c) => ({ t: c.name, id: "c:" + c.id })), { t: "Autres courses", id: "r:Autres courses" }]
+    .map((g) => ({ ...g, rows: items.filter((it) => rayonKey(it) === g.id).sort((x, y) => (shopState(x) === "bought") - (shopState(y) === "bought") || x.label.localeCompare(y.label, "fr")) }))
+    .filter((g) => g.rows.length);
+  const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+  return `<main class="screen no-nav store-mode">${offlineBanner()}
+    <div class="top"><div class="grow"><h1 style="font-size:28px">En magasin</h1><span class="sub">${done} sur ${items.length} dans le panier${online ? " · synchronisé avec le foyer" : " · hors ligne, envoi au retour du réseau"}</span></div>
+      <a class="icon-btn" href="#/courses" data-act="store-exit" style="width:auto;padding:0 16px;font-weight:800;text-decoration:none">Fini</a></div>
+    <div class="bar"><span style="width:${pct}%"></span></div>
+    ${items.length ? groups.map((g) => `<section class="card" style="padding:0;overflow:hidden"><div class="aisle">${esc(g.t)}</div>
+      ${g.rows.map((it) => { const on = shopState(it) === "bought"; return `<button type="button" class="store-row${on ? " done" : ""}" data-act="shop-toggle" data-id="${it.id}" aria-pressed="${on}">
+        <span class="big-check${on ? " on" : ""}">${on ? svg('<path d="M5 12.5l4.5 4.5L19 7"/>', 20, 3) : ""}</span>
+        <span class="store-name">${esc(it.label)}</span><span class="q">${fmtQ(it.qty)}${it.unit && !["pièce", ""].includes(it.unit) ? " " + esc(unitLabel(it.product || { unit: it.unit }, it.qty)) : ""}</span></button>`; }).join("")}</section>`).join("")
+      : `<p class="empty-state">La liste est vide.</p>`}
+    <form id="shop-add" class="search" style="padding-right:6px"><input id="shop-new" placeholder="Ajouter un oubli…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
+      <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>
+  </main>${done ? `<div class="cta-bar"><a class="cta" href="#/courses" data-act="store-exit" style="text-decoration:none;display:flex;align-items:center;justify-content:center">Terminer · ranger ${plural(done, "achat", "achats")}</a></div>` : ""}`;
+}
+// ───────── Prix France / Allemagne (d'après les tickets) ─────────
+const DE_STORES = /\b(dm|rossmann|edeka|rewe|kaufland|netto|penny|globus|norma|muller|mueller|apotheke|real|tegut|hit|marktkauf|budni|denns|alnatura)\b/;
+const FR_STORES = /\b(leclerc|carrefour|auchan|intermarche|super u|hyper u|systeme u|casino|monoprix|franprix|cora|match|pharmacie|biocoop|picard|grand frais|naturalia|action|gifi)\b/;
+function guessCountry(storeName) {
+  const n = E.normTxt(storeName || "");
+  if (DE_STORES.test(n)) return "DE";
+  if (FR_STORES.test(n)) return "FR";
+  return "";
+}
+function detectCountry(text, storeName) {
+  const g = guessCountry(storeName); if (g) return g;
+  const t = E.normTxt(text || "");
+  const de = (t.match(/\b(mwst|summe|steuer|ruckgeld|pfand|bar|netto|brutto|danke fur ihren einkauf|ec karte|kartenzahlung)\b/g) || []).length;
+  const fr = (t.match(/\b(tva|total ttc|ttc|merci|carte bancaire|cb|rendu|montant|articles)\b/g) || []).length;
+  return de > fr ? "DE" : "FR";
+}
+const countryOf = (pu) => pu.country || guessCountry(pu.store) || "FR";
+const FLAG = { FR: "🇫🇷", DE: "🇩🇪" };
+// Dernier prix unitaire connu par produit et par pays.
+function priceIndex() {
+  const idx = new Map();
+  for (const pu of purchases) {
+    if (pu.kind === "waste" || !pu.date) continue;
+    const c = countryOf(pu);
+    for (const it of pu.items || []) {
+      const q = Number(it.qty) || 1, price = Number(it.price);
+      if (!(price > 0) || it.estimated) continue;
+      const key = it.productId ? "p:" + it.productId : "n:" + E.normTxt(it.label || "");
+      const e = idx.get(key) || {};
+      if (!e[c] || pu.date >= e[c].date) e[c] = { u: price / q, date: pu.date, store: pu.store || "" };
+      idx.set(key, e);
+    }
+  }
+  return idx;
+}
+function comparePrice(it, idx) {
+  const e = idx.get(it.product ? "p:" + it.product.id : "n:" + E.normTxt(it.label)) || (it.product ? idx.get("n:" + E.normTxt(it.product.name)) : null);
+  if (!e || !e.FR || !e.DE) return e ? { only: e.FR ? "FR" : e.DE ? "DE" : "", e } : null;
+  const q = Number(it.qty) || 1;
+  const best = e.DE.u < e.FR.u ? "DE" : "FR";
+  const save = Math.abs(e.FR.u - e.DE.u) * (["g", "kg", "ml", "cl", "l"].includes(String(it.unit).toLowerCase()) ? 1 : q);
+  return { best: Math.abs(e.FR.u - e.DE.u) / Math.max(e.FR.u, e.DE.u) < 0.03 ? "" : best, save, e };
+}
 function viewCourses() {
   if (ui.shopSort == null) { try { ui.shopSort = localStorage.getItem("plk-shopsort") || "rayon"; } catch { ui.shopSort = "rayon"; } }
   const items = shoppingItems();
@@ -1926,13 +2123,20 @@ function viewCourses() {
       <button class="sc-x" data-act="shop-cancel" data-id="${it.id}" aria-label="Annuler ${esc(it.label)}">×</button>
     </div>`;
   // Tri par rayon (ordre d'un magasin) pour l'alimentaire, puis les autres catégories (hygiène, chat…).
-  const byRayon = ui.shopSort !== "cat";
+  const byPays = ui.shopSort === "pays";
+  const byRayon = ui.shopSort !== "cat" && !byPays;
+  const pidx = byPays ? priceIndex() : null;
+  const cmp = new Map();
+  if (byPays) for (const it of items) { const c = comparePrice(it, pidx); cmp.set(it.id, c); if (c) { const e = c.e; const fmt = (k) => e[k] ? `${FLAG[k]} ${euro(e[k].u)}${e[k].store ? " " + e[k].store : ""}` : ""; it.why = [fmt("DE"), fmt("FR")].filter(Boolean).join(" · ") + (it.why ? " · " + it.why : ""); } }
   const keyOf = (it) => {
+    if (byPays) { const c = cmp.get(it.id); return c?.best ? "pays:" + c.best : c?.only ? "only:" + c.only : "pays:?"; }
     if (!byRayon) return it.categoryId || "manual";
     if (it.product && it.categoryId && it.categoryId !== "alim") return "c:" + it.categoryId;
     return "r:" + E.rayonOf(it.label);
   };
-  const groupDefs = byRayon
+  const groupDefs = byPays
+    ? [{ title: "🇩🇪 Moins cher en Allemagne", id: "pays:DE" }, { title: "🇫🇷 Moins cher en France", id: "pays:FR" }, { title: "Acheté seulement en Allemagne", id: "only:DE" }, { title: "Acheté seulement en France", id: "only:FR" }, { title: "Prix pas encore connu", id: "pays:?" }]
+    : byRayon
     ? [...E.RAYONS.filter((r) => r !== "Autres courses").map((r) => ({ title: r, id: "r:" + r })), ...CATS.filter((c) => c.id !== "alim").map((c) => ({ title: c.name, id: "c:" + c.id })), { title: "Autres courses", id: "r:Autres courses" }]
     : [...CATS.map((c) => ({ title: c.name, id: c.id })), { title: "Autres", id: "manual" }];
   const groups = (list) => groupDefs
@@ -1940,7 +2144,12 @@ function viewCourses() {
     .filter((g) => g.rows.length)
     .map((g) => `<section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">${g.title}</h2><div class="card list">${g.rows.map(row).join("")}</div></section>`).join("");
   let body;
-  if (tab === "todo") body = todo.length ? groups(todo) : `<p class="empty-state">Rien à acheter. Les stocks bas, recettes et menus ajoutent ici leurs manquants.</p>`;
+  const saveDE = byPays ? todo.reduce((n, it) => { const c = cmp.get(it.id); return n + (c?.best === "DE" ? c.save : 0); }, 0) : 0;
+  const saveFR = byPays ? todo.reduce((n, it) => { const c = cmp.get(it.id); return n + (c?.best === "FR" ? c.save : 0); }, 0) : 0;
+  const saveCard = byPays && tab === "todo" ? `<section class="card" style="padding:12px 14px;background:var(--mint-soft);border-color:transparent;display:flex;flex-direction:column;gap:2px">
+      <span class="t" style="color:var(--mint-ink)">${saveDE + saveFR > 0 ? `≈ ${euro(saveDE + saveFR)} d’économie en achetant chaque article au bon endroit` : "Pas encore assez de tickets des deux côtés pour comparer"}</span>
+      <span class="s">${saveDE > 0 ? `${euro(saveDE)} en Allemagne` : ""}${saveDE > 0 && saveFR > 0 ? " · " : ""}${saveFR > 0 ? `${euro(saveFR)} en France` : ""}${saveDE + saveFR > 0 ? " · " : ""}d’après le dernier prix payé de chaque côté.</span></section>` : "";
+  if (tab === "todo") body = todo.length ? saveCard + groups(todo) : `<p class="empty-state">Rien à acheter. Les stocks bas, recettes et menus ajoutent ici leurs manquants.</p>`;
   else if (tab === "bought") body = bought.length ? groups(bought) : `<p class="empty-state">Cochez les articles en magasin : ils arrivent ici, prêts à ranger.</p>`;
   else body = hist.length ? `<div class="card list">${hist.map((d) => `<div class="list-row"><span class="grow"><span class="t">${esc(d.label || (find(d.productId)?.name) || "Article")}</span><span class="s">${d.state === "stored" ? "Rangé" : "Annulé"}${d.doneBy ? " · " + esc(d.doneBy) : ""}</span></span>
       ${d.state === "cancelled" ? `<button class="out-btn" style="height:36px" data-act="shop-restore" data-id="${d.id}">Remettre</button>` : ""}</div>`).join("")}</div>` : `<p class="empty-state">Aucun historique.</p>`;
@@ -1949,9 +2158,10 @@ function viewCourses() {
     <div class="top"><div class="grow"><h1>Courses</h1><span class="sub">Partagée avec le foyer</span></div>
       <a class="icon-btn" href="#/budget" aria-label="Budget">${svg('<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3M15 13h2"/>', 20)}</a>
       <button class="icon-btn" data-act="shop-share" aria-label="Partager la liste">${I.share(20)}</button></div>
+    ${todo.length ? `<a class="cta" href="#/magasin" style="height:52px;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px">${svg('<path d="M3 4h2l2.5 11h11L21 7H7"/><circle cx="9" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/>', 20)} Je suis en magasin</a>` : ""}
     <a class="out-btn" href="#/ajouter" data-act="addmode" data-v="ticket" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ranger les courses avec le ticket de caisse</a>
     <div class="seg" role="group">${tabBtn("todo", "À acheter", todo.length)}${tabBtn("bought", "Acheté", bought.length)}${tabBtn("hist", "Historique", 0)}</div>
-    ${tab !== "hist" ? `<div class="chips" style="gap:6px"><span class="s">Trier :</span><button class="chip sm" data-act="shopsort" data-v="rayon" aria-pressed="${byRayon}">Par rayon</button><button class="chip sm" data-act="shopsort" data-v="cat" aria-pressed="${!byRayon}">Par catégorie</button></div>` : ""}
+    ${tab !== "hist" ? `<div class="chips" style="gap:6px"><span class="s">Trier :</span><button class="chip sm" data-act="shopsort" data-v="rayon" aria-pressed="${byRayon}">Par rayon</button><button class="chip sm" data-act="shopsort" data-v="cat" aria-pressed="${ui.shopSort === "cat"}">Par catégorie</button><button class="chip sm" data-act="shopsort" data-v="pays" aria-pressed="${ui.shopSort === "pays"}">🇩🇪 / 🇫🇷</button></div>` : ""}
     ${tab === "todo" ? `<form id="shop-add" class="search" style="padding-right:6px"><label class="sr" for="shop-new">Ajouter un article</label>
       <input id="shop-new" placeholder="Ajouter un article…" autocomplete="off" value="${esc(ui.shopNew)}" data-shopnew>
       <button class="round-btn" style="background:var(--primary);color:var(--primary-ink)" aria-label="Ajouter">${I.plus(18)}</button></form>` : ""}
@@ -2225,7 +2435,7 @@ async function readTicket() {
   const text = ui.tk?.text || "";
   const r = parseReceipt(text);
   if (!r.items.length) { showToast("Aucun article reconnu : vérifiez que le texte du ticket est complet"); render(); return; }
-  ui.tk = { ...ui.tk, step: "review", source: "ticket", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, readTotal: r.total, sum: r.sum, lines: [] };
+  ui.tk = { ...ui.tk, step: "review", source: "ticket", store: r.store, storeCat: r.category, date: r.date || E.todayIso(), total: r.total, readTotal: r.total, sum: r.sum, lines: [], country: detectCountry(text, r.store) };
   ui.tk.lines = await prepareLines(r.items, r.store, r.category);
   render();
   // Noms des produits inconnus via les codes EAN (Open Food Facts et mémoire du foyer).
@@ -2297,6 +2507,7 @@ function viewTicket() {
     <div class="top"><button class="icon-btn" data-act="tk-back" aria-label="Retour">${I.back(22)}</button><div class="grow"><h1 style="font-size:24px">${voice ? "Vérifier la dictée" : "Vérifier le ticket"}</h1><span class="sub">${plural(t.lines.length, voice ? "article compris" : "ligne lue", voice ? "articles compris" : "lignes lues")} · Plakardo retient vos choix pour la prochaine fois</span></div></div>
     <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div class="row-between"><span class="label">Magasin</span><input class="input sm" style="max-width:190px" data-tkstore value="${esc(t.store)}" placeholder="Ex. Lidl Kehl"></div>
+      <div class="row-between"><span class="label">Pays</span><div class="chips">${["FR", "DE"].map((c) => `<button type="button" class="chip sm" data-act="tk-country" data-v="${c}" aria-pressed="${(t.country || guessCountry(t.store) || "FR") === c}">${FLAG[c]} ${c === "FR" ? "France" : "Allemagne"}</button>`).join("")}</div></div>
       <div class="row-between"><span class="label">Date</span><input class="input sm" style="max-width:190px" type="date" data-tkdate value="${esc(t.date)}"></div>
       ${voice ? `<div class="row-between"><span class="label">Total payé</span><span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:86px;border:1px solid var(--border);font-size:16px" inputmode="decimal" data-tktotal value="${t.total != null ? fmtQ(t.total) : ""}" placeholder="${sumInc ? fmtQ(sumInc) : "facultatif"}" aria-label="Total payé"><span class="s">€</span></span></div>
       <span class="s">${t.total != null ? "Total indiqué : il va dans le budget." : sumInc ? "Sans total, le budget utilise les prix indiqués ou estimés (derniers prix connus)." : "Facultatif : indiquez un total ou des prix pour le budget."}</span>` : `<div class="row-between"><span class="label">Total</span><span style="display:flex;align-items:center;gap:4px"><input class="qinput sm" style="width:86px;border:1px solid var(--border);font-size:16px" inputmode="decimal" data-tktotal value="${t.total != null ? fmtQ(t.total) : ""}" aria-label="Total"><span class="s">€</span></span></div>
@@ -2342,7 +2553,7 @@ async function ticketGo() {
       return { label: l.label, price: Math.round((lineCost(l) || 0) * 100) / 100, estimated: l.price == null, qty: l.qty, productId: l.include && l.productId !== "new" ? l.productId : null, categoryId: l.kind === "deposit" ? "autre" : (p ? p.categoryId : l.newCat) || "alim" };
     });
     const total = effectiveTotal(t);
-    if (total > 0) await store.addPurchase({ store: (t.store || "").trim() || (t.source === "voice" ? "Achat dicté" : "Magasin"), date: t.date || E.todayIso(), total, estimated: t.source === "voice" && t.total == null, items, by: me(), source: t.source || "ticket", at: Date.now() });
+    if (total > 0) await store.addPurchase({ store: (t.store || "").trim() || (t.source === "voice" ? "Achat dicté" : "Magasin"), country: t.country || guessCountry(t.store), date: t.date || E.todayIso(), total, estimated: t.source === "voice" && t.total == null, items, by: me(), source: t.source || "ticket", at: Date.now() });
     // Mémoire : libellé du ticket → produit ; prix habituel du produit ; liste de courses à jour.
     for (const l of t.lines) {
       if (!l.include || l.kind !== "item" || !l.productId || l.productId === "new") continue;
@@ -2536,6 +2747,11 @@ function render() {
       case "lieu": html = viewLieu(r.arg); break;
       case "inventaire": html = viewInventaire(r.arg); break;
       case "admin": html = viewAdmin(); break;
+      case "magasin": html = viewMagasin(); break;
+      case "reste": html = viewReste(); break;
+      case "semaine": html = viewSemaine(); break;
+      case "vocal": html = viewVocal(r); break;
+      case "siri": html = viewSiri(); break;
       case "lieux": html = viewLieux(); break;
       case "categories": html = viewCategories(); break;
       case "ajouter": html = viewAjouter(); break;
@@ -2818,6 +3034,23 @@ app.addEventListener("click", (e) => {
       showToast(`${plural(n, "besoin ajouté", "besoins ajoutés")} aux courses`); go("#/courses"); break;
     }
     case "shoptab": ui.shopTab = v; render(); break;
+    case "wk-reroll": ui.weekPreview = E.planWeek(BOOK, products, { days: 5, perDay: 1, filters: { ...ui.recFilters, portions: defPortions() }, prefs: prefs(), seed: Date.now() }); render(); break;
+    case "wk-validate": {
+      const pv = ui.weekPreview || []; if (!pv.length || !canWrite()) break;
+      ui.busy = true; render();
+      setMenu(pv.map((x) => ({ recipeId: x.recipe.id, portions: defPortions(), day: x.day, meal: x.meal || "", recipe: x.recipe })))
+        .then(() => { ui.weekPreview = null; showToast("Menu validé · courses mises à jour"); go("#/menu"); })
+        .catch((e) => showToast(e?.message || "Impossible")).finally(() => { ui.busy = false; render(); });
+      break;
+    }
+    case "siri-copy": navigator.clipboard?.writeText(v).then(() => showToast("Adresse copiée")).catch(() => showToast("Copie impossible : sélectionnez l’adresse")); break;
+    case "lo-n": if (ui.leftover) { ui.leftover.n = Number(v); render(); } break;
+    case "lo-loc": if (ui.leftover) { ui.leftover.loc = v; render(); } break;
+    case "lo-days": if (ui.leftover) { ui.leftover.days = Number(v); render(); } break;
+    case "lo-save": saveLeftover(); break;
+    case "lo-none": ui.leftover = null; go("#/"); break;
+    case "tk-country": if (ui.tk) { ui.tk.country = v; render(); } break;
+    case "store-exit": keepAwake(false); ui.shopTab = "bought"; break;
     case "loginmode": ui.loginMode = v; ui.loginError = ""; render(); break;
     case "pwreset": {
       const em = String(document.getElementById("l-email")?.value || "").trim();
@@ -2993,6 +3226,12 @@ app.addEventListener("submit", async (e) => {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { showToast("Adresse e-mail invalide"); return; }
     if ((ui.adm?.access || []).some((x) => x.key === em)) { showToast("Cette adresse est déjà autorisée"); return; }
     store.addAccess(em, e.target.dataset.hid, String(fd.get("name") || "")).then(() => { ui.adm = null; showToast("Adresse autorisée"); render(); }).catch((er) => showToast(er?.code === "permission-denied" ? "Refusé : règles à publier" : (er?.message || "Impossible")));
+    return;
+  }
+  if (e.target.id === "wk-budget") {
+    e.preventDefault();
+    const b = parseQ(new FormData(e.target).get("b"));
+    store.setMeta("prefs", { ...prefs(), budget: b || null }).then(() => showToast(b ? `Budget mensuel : ${euro(b)}` : "Budget retiré"));
     return;
   }
   if (e.target.id === "hh-name") {
