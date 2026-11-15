@@ -1015,6 +1015,7 @@ Gratin de pâtes aux légumes et mozzarella | Plat | Italien | 15 | 25 | Facile
 
 Orzo citronné au poulet et courgette | Plat | Méditerranéen | 15 | 20 | Facile
 @id b-orzo-citronne-au-poulet-et-courgette
+@img img/recettes/b-orzo-citronne-au-poulet-et-courgette.webp
 - orzo: 160 g
 - poulet: 260 g
 - courgette: 1 pièce
@@ -1031,6 +1032,7 @@ Orzo citronné au poulet et courgette | Plat | Méditerranéen | 15 | 20 | Facil
 
 Polenta crémeuse aux champignons rôtis | Plat | Italien | 10 | 25 | Facile
 @id b-polenta-cremeuse-aux-champignons-rotis
+@img img/recettes/b-polenta-cremeuse-aux-champignons-rotis.webp
 - polenta instantanée: 120 g
 - champignons: 300 g
 - lait: 250 ml
@@ -1047,6 +1049,7 @@ Polenta crémeuse aux champignons rôtis | Plat | Italien | 10 | 25 | Facile
 
 Keftas de dinde au boulgour et yaourt | Plat | Levantin | 15 | 20 | Facile
 @id b-keftas-de-dinde-au-boulgour-et-yaourt
+@img img/recettes/b-keftas-de-dinde-au-boulgour-et-yaourt.webp
 - dinde hachée: 300 g
 - boulgour: 140 g
 - yaourt grec: 120 g
@@ -1064,6 +1067,7 @@ Keftas de dinde au boulgour et yaourt | Plat | Levantin | 15 | 20 | Facile
 
 Udon au bœuf et légumes croquants | Plat | Japonais | 15 | 15 | Facile
 @id b-udon-au-boeuf-et-legumes-croquants
+@img img/recettes/b-udon-au-boeuf-et-legumes-croquants.webp
 - nouilles udon: 300 g
 - bœuf émincé: 250 g
 - carotte: 1 pièce
@@ -1081,6 +1085,7 @@ Udon au bœuf et légumes croquants | Plat | Japonais | 15 | 15 | Facile
 
 Enchiladas au poulet et haricots noirs | Plat | Mexicain | 20 | 25 | Moyenne
 @id b-enchiladas-au-poulet-et-haricots-noirs
+@img img/recettes/b-enchiladas-au-poulet-et-haricots-noirs.webp
 - tortillas de blé: 4 pièce
 - poulet: 280 g
 - haricots noirs cuits: 180 g
@@ -1098,6 +1103,7 @@ Enchiladas au poulet et haricots noirs | Plat | Mexicain | 20 | 25 | Moyenne
 
 Larb thaï au poulet et herbes fraîches | Plat | Thaïlandais | 15 | 15 | Facile
 @id b-larb-thai-au-poulet-et-herbes-fraiches
+@img img/recettes/b-larb-thai-au-poulet-et-herbes-fraiches.webp
 - poulet haché: 300 g
 - riz jasmin: 140 g
 - concombre: 0.5 pièce
@@ -1115,6 +1121,7 @@ Larb thaï au poulet et herbes fraîches | Plat | Thaïlandais | 15 | 15 | Facil
 
 Falafels au four et houmous maison | Plat | Levantin | 20 | 25 | Moyenne
 @id b-falafels-au-four-et-houmous-maison
+@img img/recettes/b-falafels-au-four-et-houmous-maison.webp
 - pois chiches cuits égouttés: 500 g
 - ail: 2 gousse
 - oignon: 0.5 pièce
@@ -1133,6 +1140,7 @@ Falafels au four et houmous maison | Plat | Levantin | 20 | 25 | Moyenne
 
 Saag paneer aux épinards | Plat | Indien | 15 | 20 | Moyenne
 @id b-saag-paneer-aux-epinards
+@img img/recettes/b-saag-paneer-aux-epinards.webp
 - paneer: 200 g
 - épinards: 350 g
 - tomates concassées: 150 g
@@ -1151,6 +1159,7 @@ Saag paneer aux épinards | Plat | Indien | 15 | 20 | Moyenne
 
 Merlu en papillote aux olives et tomates | Plat | Méditerranéen | 10 | 20 | Facile
 @id b-merlu-en-papillote-aux-olives-et-tomates
+@img img/recettes/b-merlu-en-papillote-aux-olives-et-tomates.webp
 - filet de merlu: 320 g
 - tomates cerises: 250 g
 - olives noires: 60 g
@@ -1167,6 +1176,7 @@ Merlu en papillote aux olives et tomates | Plat | Méditerranéen | 10 | 20 | Fa
 
 Mijoté d’aubergine et pois chiches | Plat | Marocain | 15 | 30 | Facile
 @id b-mijote-d-aubergine-et-pois-chiches
+@img img/recettes/b-mijote-d-aubergine-et-pois-chiches.webp
 - aubergine: 1 pièce
 - pois chiches cuits: 250 g
 - tomates concassées: 300 g
@@ -1184,6 +1194,7 @@ Mijoté d’aubergine et pois chiches | Plat | Marocain | 15 | 30 | Facile
 
 Bulgogi de poulet au sésame | Plat | Coréen | 15 | 15 | Facile
 @id b-bulgogi-de-poulet-au-sesame
+@img img/recettes/b-bulgogi-de-poulet-au-sesame.webp
 - poulet: 300 g
 - riz: 140 g
 - carotte: 1 pièce
@@ -1202,6 +1213,7 @@ Bulgogi de poulet au sésame | Plat | Coréen | 15 | 15 | Facile
 
 Bao au poulet effiloché et pickles | Plat | Vietnamien | 20 | 20 | Moyenne
 @id b-bao-au-poulet-effiloche-et-pickles
+@img img/recettes/b-bao-au-poulet-effiloche-et-pickles.webp
 - pains bao: 4 pièce
 - poulet: 280 g
 - carotte: 1 pièce
@@ -1219,6 +1231,7 @@ Bao au poulet effiloché et pickles | Plat | Vietnamien | 20 | 20 | Moyenne
 
 Goulash de bœuf au paprika | Plat | Hongrois | 20 | 75 | Moyenne
 @id b-goulash-de-boeuf-au-paprika
+@img img/recettes/b-goulash-de-boeuf-au-paprika.webp
 - bœuf à mijoter: 350 g
 - pomme de terre: 300 g
 - carotte: 2 pièce
@@ -1236,6 +1249,7 @@ Goulash de bœuf au paprika | Plat | Hongrois | 20 | 75 | Moyenne
 
 Chou-fleur rôti, quinoa et sauce tahini | Plat | Levantin | 15 | 30 | Facile
 @id b-chou-fleur-roti-quinoa-et-sauce-tahini
+@img img/recettes/b-chou-fleur-roti-quinoa-et-sauce-tahini.webp
 - chou-fleur: 500 g
 - quinoa: 130 g
 - pois chiches cuits: 180 g
@@ -1253,6 +1267,7 @@ Chou-fleur rôti, quinoa et sauce tahini | Plat | Levantin | 15 | 30 | Facile
 
 Poêlée tex-mex de dinde et poivrons | Plat | Tex-Mex | 15 | 20 | Facile
 @id b-poelee-tex-mex-de-dinde-et-poivrons
+@img img/recettes/b-poelee-tex-mex-de-dinde-et-poivrons.webp
 - dinde hachée: 280 g
 - riz: 130 g
 - poivron rouge: 1 pièce
@@ -1270,6 +1285,7 @@ Poêlée tex-mex de dinde et poivrons | Plat | Tex-Mex | 15 | 20 | Facile
 
 Soupe grecque avgolemono | Plat | Grec | 15 | 25 | Moyenne
 @id b-soupe-grecque-avgolemono
+@img img/recettes/b-soupe-grecque-avgolemono.webp
 - poulet: 250 g
 - riz: 90 g
 - œuf: 2 pièce
@@ -1286,6 +1302,7 @@ Soupe grecque avgolemono | Plat | Grec | 15 | 25 | Moyenne
 
 Poivrons farcis au bœuf et boulgour | Plat | Méditerranéen | 20 | 35 | Moyenne
 @id b-poivrons-farcis-au-boeuf-et-boulgour
+@img img/recettes/b-poivrons-farcis-au-boeuf-et-boulgour.webp
 - poivron: 2 pièce
 - bœuf haché: 250 g
 - boulgour: 100 g
@@ -1302,6 +1319,7 @@ Poivrons farcis au bœuf et boulgour | Plat | Méditerranéen | 20 | 35 | Moyenn
 
 Soba au saumon et sauce miso-citron | Plat | Japonais | 15 | 15 | Facile
 @id b-soba-au-saumon-et-sauce-miso-citron
+@img img/recettes/b-soba-au-saumon-et-sauce-miso-citron.webp
 - nouilles soba: 180 g
 - saumon: 260 g
 - concombre: 0.5 pièce
@@ -1319,6 +1337,7 @@ Soba au saumon et sauce miso-citron | Plat | Japonais | 15 | 15 | Facile
 
 Tarte fine à la betterave et au chèvre | Plat | Français | 15 | 25 | Facile
 @id b-tarte-fine-a-la-betterave-et-au-chevre
+@img img/recettes/b-tarte-fine-a-la-betterave-et-au-chevre.webp
 - pâte feuilletée: 1 pièce
 - betterave cuite: 250 g
 - fromage de chèvre: 100 g
@@ -1334,6 +1353,7 @@ Tarte fine à la betterave et au chèvre | Plat | Français | 15 | 25 | Facile
 
 Biryani végétarien aux légumes rôtis | Plat | Indien | 20 | 35 | Moyenne
 @id b-biryani-vegetarien-aux-legumes-rotis
+@img img/recettes/b-biryani-vegetarien-aux-legumes-rotis.webp
 - riz basmati: 160 g
 - chou-fleur: 250 g
 - carotte: 2 pièce
