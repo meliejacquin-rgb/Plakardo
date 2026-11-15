@@ -15,7 +15,7 @@ const CATS = [
   { id: "hyg", name: "Hygiène" },
   { id: "chat", name: "Chat" },
 ];
-const APP_VERSION = "2.17.0";
+const APP_VERSION = "2.18.0";
 const CUISINE_URL = "https://claude.ai/artifact/C1QSgeBbBRUSKQyZ4rJjWx";
 const DEFAULT_CATS = CATS.map((c) => ({ ...c }));
 const CAT = Object.fromEntries(CATS.map((c) => [c.id, c]));
@@ -27,7 +27,7 @@ function applyCats() {
   for (const k of Object.keys(CAT)) delete CAT[k];
   for (const c of CATS) CAT[c.id] = c;
 }
-const UNITS = ["pièce", "paquet", "boîte", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
+const UNITS = ["pièce", "paquet", "boîte", "brique", "bouteille", "flacon", "sachet", "sac", "tube", "pot", "rouleau", "g", "kg", "ml", "cl", "L"];
 const PLURAL = { pièce: "pièces", paquet: "paquets", boîte: "boîtes", bouteille: "bouteilles", flacon: "flacons", sachet: "sachets", sac: "sacs", tube: "tubes", pot: "pots", rouleau: "rouleaux", g: "g", kg: "kg", ml: "ml", cl: "cl", L: "L" };
 
 const svg = (body, size = 24, sw = 1.8) =>
@@ -252,7 +252,7 @@ function openForm(r) {
     const p = find(r.arg);
     if (!p) { ui.form = null; return; }
     ui.form = { id: p.id, name: p.name || "", detail: p.detail || "", categoryId: p.categoryId || "alim", unit: p.unit || "pièce",
-      minQuantity: parseQ(p.minQuantity), lowAlert: p.lowAlert !== false, trackingMode: p.trackingMode || "quantity", packSize: p.packSize || "", daysPerUnit: p.daysPerUnit || "" };
+      minQuantity: parseQ(p.minQuantity), lowAlert: p.lowAlert !== false, trackingMode: p.trackingMode || "quantity", packSize: p.packSize || "", daysPerUnit: p.daysPerUnit || "", unitSize: p.unitSize || "", unitSizeUnit: p.unitSizeUnit || "" };
     if (r.params.get("lot") === "1") ui.lotSheet = { kind: "add", toLoc: p.homeLoc || (E.fefo(E.lotsOf(p))[0] || {}).loc || E.defaultLocFor(p.categoryId), qty: parseQ(p.packSize) || 1, expiryType: "DLC", dateText: "", expiry: "" };
   } else {
     const cat = CAT[r.params.get("cat")] ? r.params.get("cat") : "alim";
@@ -272,6 +272,7 @@ async function saveForm() {
     minQuantity: parseQ(f.minQuantity), lowAlert: !!f.lowAlert, trackingMode: f.trackingMode,
     packSize: parseQ(f.packSize) || null,
     daysPerUnit: parseQ(f.daysPerUnit) || null,
+    unitSize: parseQ(f.unitSize) || null, unitSizeUnit: parseQ(f.unitSize) ? (f.unitSizeUnit || "g") : null,
     ...(f.id ? {} : { homeLoc: f.loc }),
   };
   ui.busy = true; render();
@@ -632,6 +633,7 @@ function viewForm(r) {
     <div class="field"><span class="label">Suivi</span>${modeSeg}</div>
     ${!f.id ? `<div class="field"><span class="label">Lieu</span><div class="chips">${locations().map((l) => `<button type="button" class="chip sm" data-act="fset" data-field="loc" data-v="${l.id}" aria-pressed="${f.loc === l.id}">${esc(l.name)}</button>`).join("")}</div></div>` : ""}
     ${!f.id && f.trackingMode !== "status" ? `<div class="field"><div class="row-between"><span class="label">Quantité</span>${stepper("quantity", f.quantity, "Quantité")}</div>${unitChips}</div>` : `<div class="field"><span class="label">Unité de référence</span>${unitChips}</div>`}
+    ${f.trackingMode !== "status" && !["g", "kg", "ml", "cl", "l"].includes(String(f.unit).toLowerCase()) ? sizeField(f) : ""}
     ${f.trackingMode !== "status" ? `<div class="field"><div class="row-between"><span class="label">Conditionnement habituel <span class="sub">(ex. 500 pour un paquet de 500 g)</span></span>
       <input class="qinput" style="border:1px solid var(--border);width:90px" inputmode="decimal" data-field="packSize" value="${esc(f.packSize ? fmtQ(f.packSize) : "")}" placeholder="—" aria-label="Conditionnement"></div></div>` : ""}
     ${!f.id && f.trackingMode !== "status" ? `<div class="field">
@@ -670,6 +672,15 @@ function forecastBlock(f) {
     ${massVol ? "" : `<div class="row-between"><span class="s">Durée d’1 ${esc(f.unit)} (laisser vide = automatique)</span>
       <span style="display:flex;align-items:center;gap:6px"><input class="qinput" style="border:1px solid var(--border);width:70px" inputmode="decimal" data-field="daysPerUnit" value="${esc(f.daysPerUnit ? fmtQ(f.daysPerUnit) : "")}" placeholder="auto" aria-label="Durée en jours"><span class="s">jours</span></span></div>`}
   </div>`;
+}
+// Contenance d'une unité comptée : sert à convertir les recettes (200 ml de crème = 1 brique de 20 cl).
+function sizeField(f) {
+  const est = E.unitSizeOf({ name: f.name, detail: f.detail, unit: f.unit });
+  const u = f.unitSizeUnit || (est ? est.u : "g");
+  return `<div class="field"><div class="row-between"><span class="label">Contenance d’1 ${esc(f.unit)} <span class="sub">(pour les recettes)</span></span>
+      <input class="qinput" style="border:1px solid var(--border);width:90px" inputmode="decimal" data-field="unitSize" value="${esc(f.unitSize ? fmtQ(f.unitSize) : "")}" placeholder="${est ? esc(fmtQ(est.q)) : "—"}" aria-label="Contenance"></div>
+    <div class="chips">${["g", "kg", "ml", "cl", "L"].map((x) => `<button type="button" class="chip sm" data-act="fset" data-field="unitSizeUnit" data-v="${x}" aria-pressed="${String(u).toLowerCase() === x.toLowerCase()}">${x}</button>`).join("")}</div>
+    <span class="s">${f.unitSize ? `1 ${esc(f.unit)} = ${fmtQ(f.unitSize)} ${esc(u)}` : est ? `Estimé : 1 ${esc(f.unit)} ≈ ${fmtQ(est.q)} ${esc(est.u)}${est.def ? " (taille courante)" : " (lu dans le nom)"}. Corrigez si besoin.` : `Inconnue : une recette en g ou ml ne pourra pas être comparée à ce produit.`}</span></div>`;
 }
 function lotSheetHtml(p) {
   const s = ui.lotSheet;
@@ -1647,7 +1658,7 @@ function viewRecette(id) {
     <section style="display:flex;flex-direction:column;gap:6px"><h2 class="eyebrow">Ingrédients</h2><div class="card list">${ings.map((g, i) => {
       const s = states[i];
       return `<div class="list-row"><span style="color:${ST[s.state][0]};font-weight:900;width:14px">${ST[s.state][1]}</span>
-        <span class="grow"><span class="t">${esc(g.name)}</span><span class="s" style="color:${ST[s.state][0]}">${esc(s.label)}${g.note ? ` · ${esc(g.note)}` : ""}</span></span>
+        <span class="grow"><span class="t">${esc(g.name)}</span><span class="s" style="color:${ST[s.state][0]}">${s.needSize && s.product ? `<a href="#/produit/${s.product.id}" style="color:inherit">${esc(s.label)}</a>` : esc(s.label)}${s.need != null && s.product && E.unitInfo(g.unit).dim !== E.unitInfo(s.product.unit || "pièce").dim ? ` · il faut ≈ ${fmtQ(s.need)} ${esc(unitLabel(s.product, s.need))}` : ""}${g.note ? ` · ${esc(g.note)}` : ""}</span></span>
         <strong>${g.qty == null ? "—" : `${fmtQ(g.qty)} ${esc(g.unit)}`}</strong></div>`;
     }).join("")}</div>
     <span class="s">● disponible · ◐ partiel · ○ manquant · ? à vérifier · « · » placard de base (sel, huile, épices…)</span></section>
@@ -1699,14 +1710,14 @@ function cookFromRecipe(r) {
     const p = g.productId && byId[g.productId];
     if (!p || !E.isAvailable(p)) continue;
     if (E.isStatusMode(p)) { ui.cook.push({ productId: p.id, status: E.statusOf(p), used: true }); continue; }
-    let q = g.qty == null ? null : E.convert(g.qty, g.unit, p.unit || "pièce");
+    let q = g.qty == null ? null : E.convertFor(p, g.qty, g.unit);
     ui.cook.push({ productId: p.id, qty: q == null ? 0 : Math.min(E.round3(q), qty(p)) });
     // Pas assez dans le produit principal : le reste est pris dans les équivalents (ex. Eier après Œufs).
     if (q != null) {
       let left = q - qty(p);
       for (const id of g.altIds || []) {
         const a = byId[id]; if (left <= 1e-9 || !a || !E.isAvailable(a)) continue;
-        const f = E.convert(1, a.unit || "pièce", p.unit || "pièce"); if (!f) continue;
+        const f = E.convertBetween(a, p, 1); if (!f) continue;
         const t = Math.min(left, qty(a) * f);
         if (t > 0) { ui.cook.push({ productId: a.id, qty: E.round3(t / f) }); left -= t; }
       }

@@ -67,6 +67,72 @@ export function convert(q, fromUnit, toUnit) {
   return round3((q * a.factor) / b.factor);
 }
 
+// Contenance d'une unité de produit (1 brique = 500 ml, 1 pot = 125 g…) : réglée sur la fiche ou lue dans le nom.
+const isMV = (dim) => dim === "mass" || dim === "vol";
+export function guessUnitSize(p) {
+  const n = String(`${p.name || ""} ${p.detail || ""}`).toLowerCase().replace(",", ".");
+  const m = n.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g|ml|cl|l)(?![a-z])/) || n.match(/(\d+(?:\.\d+)?)\s*(kg|g|ml|cl|l)(?![a-z])/);
+  if (!m) return null;
+  const q = Number(m.length === 4 ? m[2] : m[1]), u = m.length === 4 ? m[3] : m[2];
+  return q > 0 ? { q, u, guessed: true } : null;
+}
+// Contenances habituelles quand le nom ne dit rien (estimation, modifiable sur la fiche).
+const SIZE_DEFAULTS = [
+  [["thon", "thunfisch"], 140, "g"], [["sardine", "maquereau"], 115, "g"],
+  [["lait de coco", "kokosmilch", "creme de coco"], 400, "ml"],
+  [["mais", "zuckermais"], 285, "g"],
+  [["tomates concassees", "tomates pelees", "pulpe de tomate", "gehackte tomaten", "dosentomaten", "pizzatomaten"], 400, "g"],
+  [["haricots", "pois chiches", "lentilles", "flageolets", "bohnen", "kichererbsen", "linsen"], 400, "g"],
+  [["champignons de paris en", "champignons emince"], 230, "g"],
+  [["passata", "coulis", "passierte"], 500, "g"],
+  [["concentre de tomate", "tomatenmark"], 140, "g"],
+  [["creme", "sahne", "schmand"], 20, "cl"],
+  [["lait", "milch"], 1, "l"],
+  [["jus", "saft"], 1, "l"],
+  [["huile", "ol "], 1, "l"],
+  [["yaourt", "joghurt", "skyr"], 125, "g"],
+  [["mozzarella"], 125, "g"],
+  [["beurre", "butter"], 250, "g"],
+  [["lardons", "speckwurfel"], 200, "g"],
+  [["emmental", "fromage rape", "reibekase", "gruyere"], 200, "g"],
+  [["feta", "hirtenkase"], 200, "g"],
+  [["pates", "spaghetti", "penne", "fusilli", "nudeln", "tagliatelle", "macaroni"], 500, "g"],
+  [["riz", "reis"], 1000, "g"], [["semoule", "couscous", "boulgour", "bulgur", "quinoa"], 500, "g"],
+  [["farine", "mehl", "sucre", "zucker"], 1000, "g"],
+  [["gnocchi", "tortellini", "ravioli"], 500, "g"],
+];
+export function unitSizeOf(p) {
+  if (!p || isMV(unitInfo(p.unit || "pièce").dim)) return null;
+  if (num(p.unitSize) > 0 && p.unitSizeUnit) return { q: num(p.unitSize), u: p.unitSizeUnit, guessed: false };
+  const g = guessUnitSize(p); if (g) return g;
+  if (unitInfo(p.unit || "pièce").dim === "count:pièce" && !/mozzarella|yaourt|joghurt/.test(normTxt(p.name))) return null;
+  const n = " " + normTxt(`${p.name} ${p.detail || ""}`) + " ";
+  for (const [kws, q, u] of SIZE_DEFAULTS) if (kws.some((k) => n.includes(" " + k))) return { q, u, guessed: true, def: true };
+  return null;
+}
+// Quantité exprimée dans l'unité d'un produit précis (tient compte de sa contenance).
+// Masse ↔ volume : approximation 1 g ≈ 1 ml (crème, lait, yaourt…).
+export function convertFor(p, q, fromUnit) {
+  const to = p.unit || "pièce";
+  const direct = convert(q, fromUnit, to);
+  if (direct != null) return direct;
+  const a = unitInfo(fromUnit), b = unitInfo(to);
+  if (!isMV(a.dim)) return null;
+  if (isMV(b.dim)) return round3((q * a.factor) / b.factor);
+  const us = unitSizeOf(p); if (!us) return null;
+  const ub = unitInfo(us.u); if (!isMV(ub.dim)) return null;
+  return round3((q * a.factor) / (us.q * ub.factor));
+}
+// Quantité d'un produit A exprimée dans l'unité d'un produit B (équivalents : brique de 1 L + bouteille de 50 cl…).
+export function convertBetween(pa, pb, q) {
+  const d = convert(q, pa.unit || "pièce", pb.unit || "pièce");
+  if (d != null) return d;
+  const ia = unitInfo(pa.unit || "pièce");
+  if (isMV(ia.dim)) return convertFor(pb, q, pa.unit);
+  const us = unitSizeOf(pa); if (!us) return null;
+  return convertFor(pb, q * us.q, us.u);
+}
+
 // ───────────────────────── Lots ─────────────────────────
 let lotSeq = 0;
 export function newLotId() { lotSeq += 1; return `l${Date.now().toString(36)}${lotSeq.toString(36)}${Math.random().toString(36).slice(2, 5)}`; }
@@ -440,7 +506,7 @@ function availAll(p, altIds, byId, now) {
   let a = lotsOf(p).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0);
   for (const id of altIds || []) {
     const q = byId[id]; if (!q) continue;
-    const v = convert(lotsOf(q).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0), q.unit || "pièce", p.unit || "pièce");
+    const v = convertBetween(q, p, lotsOf(q).filter((l) => !lotExpired(l, now)).reduce((n, l) => n + num(l.qty), 0));
     if (v != null) a += v;
   }
   return round3(a);
@@ -456,8 +522,8 @@ export function ingredientState(g, byId, now = new Date()) {
   }
   const avail = availAll(p, g.altIds, byId, now);
   if (g.qty == null) return { state: avail > 0 ? "check" : "missing", product: p, label: avail > 0 ? "Quantité à vérifier" : "Manquant", avail };
-  const need = convert(g.qty, g.unit, p.unit || "pièce");
-  if (need == null) return { state: "check", product: p, label: `Unités différentes (${p.unit}) : à vérifier`, avail };
+  const need = convertFor(p, g.qty, g.unit);
+  if (need == null) return { state: "check", product: p, label: `En ${p.unit} : indiquez la contenance d’1 ${p.unit} sur la fiche`, avail, needSize: true };
   if (avail + 1e-9 >= need) return { state: "ok", product: p, label: `Disponible · ${fmt(avail)} ${p.unit}`, avail, need };
   if (avail > 0) return { state: "partial", product: p, label: `Il manque ${fmt(round3(need - avail))} ${p.unit}`, avail, need, missing: round3(need - avail) };
   return { state: "missing", product: p, label: "Épuisé", avail: 0, need, missing: need };
@@ -506,7 +572,7 @@ export function computeNeeds(entries, products, now = new Date()) {
       for (const id of g.altIds || []) L.alts.add(id);
       L.sources.push(e.recipe.title);
       if (g.qty == null) { L.unknown = true; continue; }
-      const q = p ? convert(g.qty, g.unit, L.unit) : convert(g.qty, g.unit, L.unit);
+      const q = p ? convertFor(p, g.qty, g.unit) : convert(g.qty, g.unit, L.unit);
       if (q == null) { L.unknown = true; continue; }
       L.need = round3(L.need + q);
     }
@@ -823,7 +889,7 @@ export function resolveRecipe(r, products) {
     const fb = FALLBACK[normTxt(g.name)];
     if (fb && (!p || !isAvailable(p))) { const q = matchProduct(fb, products); if (q && (!p || isAvailable(q))) p = q; }
     // Produits équivalents (même aliment, autre marque ou autre langue) : leurs quantités s'additionnent.
-    const altIds = p ? matchAll(g.name, products).filter((q) => q.id !== p.id && !isStatusMode(q) && convert(1, q.unit || "pièce", p.unit || "pièce") != null).map((q) => q.id) : [];
+    const altIds = p ? matchAll(g.name, products).filter((q) => q.id !== p.id && !isStatusMode(q) && convertBetween(q, p, 1) != null).map((q) => q.id) : [];
     return { ...g, productId: p ? p.id : null, ...(altIds.length ? { altIds } : {}) };
   }) };
 }
@@ -849,9 +915,9 @@ function evalWithAvail(r, avail, byId, prioMap, portions) {
     const p = g.productId ? byId[g.productId] : null;
     if (!p) { if (!g.base) { missing += 1; score -= 4; } continue; }
     if (isStatusMode(p)) { score += statusOf(p) === "epuise" ? -3 : 1.5; if (statusOf(p) === "epuise") missing += 1; continue; }
-    const need = g.qty == null ? null : convert(g.qty, g.unit, p.unit || "pièce");
+    const need = g.qty == null ? null : convertFor(p, g.qty, g.unit);
     // Produit principal + équivalents (ex. Œufs + Eier), convertis dans l'unité du principal.
-    const pool = [p, ...(g.altIds || []).map((id) => byId[id]).filter(Boolean)].map((q) => ({ q, f: convert(1, q.unit || "pièce", p.unit || "pièce") || 0 }));
+    const pool = [p, ...(g.altIds || []).map((id) => byId[id]).filter(Boolean)].map((q) => ({ q, f: convertBetween(q, p, 1) || 0 }));
     const have = round3(pool.reduce((s, x) => s + (avail[x.q.id] || 0) * x.f, 0));
     const take = (amount) => { let left = amount; for (const x of pool) { if (left <= 1e-9) break; const a = (avail[x.q.id] || 0) * x.f; const t = Math.min(a, left); if (t > 0 && x.f) { uses.push({ id: x.q.id, q: round3(t / x.f) }); left -= t; } } };
     if (need == null) { if (have > 0) { score += 1.5; uses.push({ id: p.id, q: 0 }); } else { missing += 1; score -= 3; } }
