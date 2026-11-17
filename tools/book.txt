@@ -1012,3 +1012,359 @@ Gratin de pâtes aux légumes et mozzarella | Plat | Italien | 15 | 25 | Facile
 > Faire revenir la courgette et les champignons émincés 7 minutes à feu moyen avec l'huile.
 > Mélanger les pâtes, les légumes, les tomates, l'ail et le basilic dans un plat.
 > Répartir la mozzarella en morceaux et enfourner 15 minutes jusqu'à gratinage.
+
+Orzo citronné au poulet et courgette | Plat | Méditerranéen | 15 | 20 | Facile
+@id b-orzo-citronne-au-poulet-et-courgette
+@img img/recettes/b-orzo-citronne-au-poulet-et-courgette.webp
+- orzo: 160 g
+- poulet: 260 g
+- courgette: 1 pièce
+- bouillon: 450 ml
+- citron: 1 pièce
+- parmesan: 30 g
+- ail: 1 gousse
+- huile d’olive: 1 c. à soupe
+> Couper le poulet, la courgette et l’ail.
+> Faire dorer le poulet 5 min à feu moyen-vif dans l’huile, puis réserver.
+> Faire revenir la courgette et l’ail 3 min à feu moyen, ajouter l’orzo et remuer 1 min.
+> Verser le bouillon puis mijoter 12 min à feu doux en remuant et ajoutant un peu d’eau si nécessaire.
+> Ajouter le poulet, poursuivre 3 min jusqu’à cuisson complète et terminer avec le parmesan et le citron.
+
+Polenta crémeuse aux champignons rôtis | Plat | Italien | 10 | 25 | Facile
+@id b-polenta-cremeuse-aux-champignons-rotis
+@img img/recettes/b-polenta-cremeuse-aux-champignons-rotis.webp
+- polenta instantanée: 120 g
+- champignons: 300 g
+- lait: 250 ml
+- eau: 250 ml
+- parmesan: 35 g
+- ail: 2 gousse
+- persil: 10 g
+- huile d’olive: 1 c. à soupe
+> Préchauffer le four à 210 °C. Émincer champignons et ail.
+> Mélanger les champignons, l’ail et l’huile puis enfourner 20 min en remuant à mi-cuisson.
+> Porter le lait et l’eau à frémissement dans une casserole.
+> Verser la polenta et cuire 3 à 5 min à feu doux en fouettant, selon le paquet.
+> Ajouter le parmesan hors du feu et servir la polenta avec les champignons et le persil.
+
+Keftas de dinde au boulgour et yaourt | Plat | Levantin | 15 | 20 | Facile
+@id b-keftas-de-dinde-au-boulgour-et-yaourt
+@img img/recettes/b-keftas-de-dinde-au-boulgour-et-yaourt.webp
+- dinde hachée: 300 g
+- boulgour: 140 g
+- yaourt grec: 120 g
+- concombre: 0.5 pièce
+- oignon: 0.5 pièce
+- cumin: 1 c. à café
+- persil: 15 g
+- citron: 0.5 pièce
+- huile d’olive: 1 c. à soupe
+> Cuire le boulgour 12 min dans de l’eau frémissante.
+> Mélanger la dinde, l’oignon haché, le cumin et la moitié du persil, puis former 8 keftas.
+> Faire dorer les keftas dans l’huile 3 min de chaque côté à feu moyen-vif.
+> Poursuivre la cuisson 6 min à feu moyen-doux, jusqu’à cuisson à cœur.
+> Mélanger le yaourt, le concombre râpé, le citron et le persil restant puis servir avec le boulgour.
+
+Udon au bœuf et légumes croquants | Plat | Japonais | 15 | 15 | Facile
+@id b-udon-au-boeuf-et-legumes-croquants
+@img img/recettes/b-udon-au-boeuf-et-legumes-croquants.webp
+- nouilles udon: 300 g
+- bœuf émincé: 250 g
+- carotte: 1 pièce
+- poivron: 1 pièce
+- oignon nouveau: 2 pièce
+- sauce soja: 3 c. à soupe
+- gingembre frais: 15 g
+- ail: 1 gousse
+- huile de tournesol: 1 c. à soupe
+> Tailler les légumes en fines lanières, hacher ail et gingembre.
+> Cuire les nouilles udon selon le paquet puis égoutter.
+> Saisir le bœuf 3 min à feu vif dans l’huile et réserver.
+> Faire sauter les légumes 5 min à feu moyen-vif, ajouter ail et gingembre 30 secondes.
+> Remettre le bœuf, les udon et la sauce soja et mélanger 2 min à feu vif. Garnir d’oignons nouveaux.
+
+Enchiladas au poulet et haricots noirs | Plat | Mexicain | 20 | 25 | Moyenne
+@id b-enchiladas-au-poulet-et-haricots-noirs
+@img img/recettes/b-enchiladas-au-poulet-et-haricots-noirs.webp
+- tortillas de blé: 4 pièce
+- poulet: 280 g
+- haricots noirs cuits: 180 g
+- tomates concassées: 300 g
+- cheddar râpé: 70 g
+- oignon: 1 pièce
+- cumin: 1 c. à café
+- paprika: 1 c. à café
+- huile d’olive: 1 c. à soupe
+> Préchauffer le four à 190 °C. Couper le poulet en dés.
+> Faire revenir l’oignon 3 min à feu moyen puis le poulet 7 min à feu moyen-vif jusqu’à cuisson complète.
+> Ajouter haricots, épices et 100 g de tomates et mijoter 3 min à feu doux.
+> Garnir les tortillas, les rouler et les disposer dans un plat à gratin.
+> Recouvrir avec les tomates restantes et le cheddar puis enfourner 15 min.
+
+Larb thaï au poulet et herbes fraîches | Plat | Thaïlandais | 15 | 15 | Facile
+@id b-larb-thai-au-poulet-et-herbes-fraiches
+@img img/recettes/b-larb-thai-au-poulet-et-herbes-fraiches.webp
+- poulet haché: 300 g
+- riz jasmin: 140 g
+- concombre: 0.5 pièce
+- citron vert: 1 pièce
+- menthe: 10 g
+- coriandre: 15 g
+- oignon rouge: 0.5 pièce
+- sauce poisson: 1 c. à soupe
+- huile de tournesol: 1 c. à café
+> Faire cuire le riz jasmin dans l’eau frémissante selon le paquet.
+> Hacher l’oignon rouge et les herbes puis trancher le concombre.
+> Chauffer l’huile à feu moyen-vif et cuire le poulet 8 min en l’émiettant, jusqu’à cuisson complète.
+> Hors du feu ajouter la sauce poisson, le jus de citron vert, l’oignon et les herbes.
+> Servir tiède avec le riz et le concombre cru.
+
+Falafels au four et houmous maison | Plat | Levantin | 20 | 25 | Moyenne
+@id b-falafels-au-four-et-houmous-maison
+@img img/recettes/b-falafels-au-four-et-houmous-maison.webp
+- pois chiches cuits égouttés: 500 g
+- ail: 2 gousse
+- oignon: 0.5 pièce
+- persil: 20 g
+- cumin: 1 c. à café
+- farine: 25 g
+- tahini: 25 g
+- citron: 1 pièce
+- concombre: 0.5 pièce
+- huile d’olive: 1 c. à soupe
+> Préchauffer le four à 210 °C. Bien sécher 300 g de pois chiches.
+> Mixer grossièrement avec l’oignon, une gousse d’ail, le persil, le cumin et la farine puis façonner 10 petites galettes.
+> Badigeonner d’huile et enfourner 20 à 25 min en retournant à mi-cuisson.
+> Mixer les pois chiches restants avec le tahini, l’ail, le citron et un peu d’eau pour le houmous.
+> Servir les falafels avec le houmous et le concombre découpé.
+
+Saag paneer aux épinards | Plat | Indien | 15 | 20 | Moyenne
+@id b-saag-paneer-aux-epinards
+@img img/recettes/b-saag-paneer-aux-epinards.webp
+- paneer: 200 g
+- épinards: 350 g
+- tomates concassées: 150 g
+- oignon: 1 pièce
+- ail: 2 gousse
+- gingembre frais: 15 g
+- garam masala: 1 c. à café
+- crème légère: 60 ml
+- riz basmati: 120 g
+- huile de tournesol: 1 c. à soupe
+> Cuire le riz basmati selon le paquet.
+> Faire dorer les cubes de paneer 3 min par face à feu moyen, puis réserver.
+> Faire revenir oignon, ail, gingembre et garam masala 5 min à feu moyen.
+> Ajouter tomates et épinards et cuire 7 min à feu moyen-doux. Mixer partiellement si souhaité.
+> Ajouter la crème et le paneer et réchauffer 3 min à feu doux. Servir avec le riz.
+
+Merlu en papillote aux olives et tomates | Plat | Méditerranéen | 10 | 20 | Facile
+@id b-merlu-en-papillote-aux-olives-et-tomates
+@img img/recettes/b-merlu-en-papillote-aux-olives-et-tomates.webp
+- filet de merlu: 320 g
+- tomates cerises: 250 g
+- olives noires: 60 g
+- citron: 1 pièce
+- ail: 2 gousse
+- herbes de Provence: 1 c. à café
+- huile d’olive: 1 c. à soupe
+- semoule: 120 g
+> Préchauffer le four à 190 °C et préparer deux feuilles de papier cuisson.
+> Répartir le merlu, les tomates coupées en deux, les olives et l’ail haché.
+> Ajouter l’huile, le jus de citron et les herbes, puis refermer les papillotes.
+> Cuire au four 17 à 20 min jusqu’à ce que le poisson soit cuit à cœur.
+> Réhydrater la semoule 5 min à l’eau bouillante, égrainer et servir avec les papillotes.
+
+Mijoté d’aubergine et pois chiches | Plat | Marocain | 15 | 30 | Facile
+@id b-mijote-d-aubergine-et-pois-chiches
+@img img/recettes/b-mijote-d-aubergine-et-pois-chiches.webp
+- aubergine: 1 pièce
+- pois chiches cuits: 250 g
+- tomates concassées: 300 g
+- oignon: 1 pièce
+- ail: 2 gousse
+- ras-el-hanout: 2 c. à café
+- coriandre fraîche: 10 g
+- semoule: 120 g
+- huile d’olive: 1 c. à soupe
+> Couper l’aubergine en dés, hacher l’oignon et l’ail.
+> Faire revenir l’oignon 3 min à feu moyen avec l’huile et l’ail 1 min.
+> Ajouter l’aubergine et cuire 7 min à feu moyen-vif en remuant.
+> Incorporer tomates, pois chiches, épices et 100 ml d’eau ; mijoter 20 min à feu doux à couvert.
+> Réhydrater la semoule 5 min à l’eau bouillante et servir avec le mijoté et la coriandre.
+
+Bulgogi de poulet au sésame | Plat | Coréen | 15 | 15 | Facile
+@id b-bulgogi-de-poulet-au-sesame
+@img img/recettes/b-bulgogi-de-poulet-au-sesame.webp
+- poulet: 300 g
+- riz: 140 g
+- carotte: 1 pièce
+- courgette: 0.5 pièce
+- sauce soja: 3 c. à soupe
+- miel: 1 c. à soupe
+- ail: 2 gousse
+- gingembre frais: 10 g
+- graines de sésame: 1 c. à café
+- huile de tournesol: 1 c. à soupe
+> Cuire le riz selon les instructions du paquet.
+> Émincer le poulet et le mélanger à la sauce soja, au miel, à l’ail et au gingembre.
+> Couper carotte et courgette en bâtonnets et les faire sauter 5 min à feu moyen-vif, puis réserver.
+> Cuire le poulet avec sa marinade 7 à 8 min à feu moyen-vif jusqu’à cuisson complète.
+> Servir avec le riz, les légumes et le sésame.
+
+Bao au poulet effiloché et pickles | Plat | Vietnamien | 20 | 20 | Moyenne
+@id b-bao-au-poulet-effiloche-et-pickles
+@img img/recettes/b-bao-au-poulet-effiloche-et-pickles.webp
+- pains bao: 4 pièce
+- poulet: 280 g
+- carotte: 1 pièce
+- concombre: 0.5 pièce
+- vinaigre de riz: 3 c. à soupe
+- sauce soja: 2 c. à soupe
+- miel: 1 c. à café
+- coriandre: 10 g
+- yaourt nature: 50 g
+> Râper la carotte et émincer le concombre, puis les laisser mariner 15 min avec le vinaigre et le miel.
+> Pocher le poulet dans l’eau frémissante 12 à 15 min jusqu’à cuisson complète.
+> Effilocher le poulet et le mélanger à la sauce soja, puis réchauffer 2 min à feu doux.
+> Réchauffer les pains bao à la vapeur selon le paquet, environ 5 à 8 min.
+> Garnir avec le yaourt, le poulet, les crudités marinées égouttées et la coriandre.
+
+Goulash de bœuf au paprika | Plat | Hongrois | 20 | 75 | Moyenne
+@id b-goulash-de-boeuf-au-paprika
+@img img/recettes/b-goulash-de-boeuf-au-paprika.webp
+- bœuf à mijoter: 350 g
+- pomme de terre: 300 g
+- carotte: 2 pièce
+- oignon: 1 pièce
+- tomates concassées: 200 g
+- bouillon de bœuf: 450 ml
+- paprika doux: 2 c. à café
+- huile de tournesol: 1 c. à soupe
+- ail: 2 gousse
+> Couper la viande en petits cubes, émincer l’oignon et couper les légumes.
+> Faire dorer la viande 5 min à feu moyen-vif dans l’huile.
+> Ajouter l’oignon et l’ail 4 min à feu moyen, puis le paprika pendant 30 secondes.
+> Ajouter le bouillon et les tomates puis mijoter 55 min à feu doux à couvert.
+> Ajouter les pommes de terre et carottes, cuire encore 20 min à feu doux jusqu’à tendreté.
+
+Chou-fleur rôti, quinoa et sauce tahini | Plat | Levantin | 15 | 30 | Facile
+@id b-chou-fleur-roti-quinoa-et-sauce-tahini
+@img img/recettes/b-chou-fleur-roti-quinoa-et-sauce-tahini.webp
+- chou-fleur: 500 g
+- quinoa: 130 g
+- pois chiches cuits: 180 g
+- tahini: 35 g
+- citron: 1 pièce
+- persil: 15 g
+- paprika: 1 c. à café
+- huile d’olive: 1 c. à soupe
+- ail: 1 gousse
+> Préchauffer le four à 210 °C et découper le chou-fleur en fleurettes.
+> Mélanger chou-fleur, pois chiches, paprika et huile et cuire 25 à 30 min au four.
+> Rincer le quinoa, le cuire 12 à 15 min à feu doux dans l’eau frémissante, puis égoutter.
+> Mélanger tahini, jus de citron, ail haché et quelques cuillères d’eau pour obtenir une sauce fluide.
+> Assembler les bols de quinoa, légumes rôtis, sauce et persil.
+
+Poêlée tex-mex de dinde et poivrons | Plat | Tex-Mex | 15 | 20 | Facile
+@id b-poelee-tex-mex-de-dinde-et-poivrons
+@img img/recettes/b-poelee-tex-mex-de-dinde-et-poivrons.webp
+- dinde hachée: 280 g
+- riz: 130 g
+- poivron rouge: 1 pièce
+- maïs: 100 g
+- haricots rouges cuits: 160 g
+- tomates concassées: 200 g
+- oignon: 1 pièce
+- cumin: 1 c. à café
+- huile d’olive: 1 c. à soupe
+> Faire cuire le riz selon le paquet.
+> Faire revenir l’oignon dans l’huile 3 min à feu moyen.
+> Ajouter la dinde et cuire 6 min à feu moyen-vif en l’émiettant.
+> Ajouter le poivron en dés et le cumin et cuire 5 min à feu moyen.
+> Incorporer tomates, maïs et haricots rouges, mijoter 6 min à feu doux puis servir avec le riz.
+
+Soupe grecque avgolemono | Plat | Grec | 15 | 25 | Moyenne
+@id b-soupe-grecque-avgolemono
+@img img/recettes/b-soupe-grecque-avgolemono.webp
+- poulet: 250 g
+- riz: 90 g
+- œuf: 2 pièce
+- citron: 1 pièce
+- bouillon de volaille: 900 ml
+- carotte: 1 pièce
+- aneth: 10 g
+- sel: 1 pincée
+> Porter le bouillon à frémissement avec la carotte finement coupée.
+> Pocher le poulet 12 à 15 min à feu doux jusqu’à cuisson complète, retirer et effilocher.
+> Cuire le riz dans le bouillon 12 à 15 min à feu doux selon la variété.
+> Battre les œufs avec le citron et incorporer lentement deux louches de bouillon chaud en fouettant.
+> Hors du feu, verser les œufs tempérés dans le bouillon sans porter à ébullition. Ajouter poulet et aneth.
+
+Poivrons farcis au bœuf et boulgour | Plat | Méditerranéen | 20 | 35 | Moyenne
+@id b-poivrons-farcis-au-boeuf-et-boulgour
+@img img/recettes/b-poivrons-farcis-au-boeuf-et-boulgour.webp
+- poivron: 2 pièce
+- bœuf haché: 250 g
+- boulgour: 100 g
+- tomates concassées: 200 g
+- oignon: 1 pièce
+- persil: 15 g
+- cumin: 1 c. à café
+- huile d’olive: 1 c. à soupe
+> Préchauffer le four à 190 °C et couper les poivrons en deux.
+> Cuire le boulgour 12 min à feu doux dans l’eau frémissante, puis égoutter.
+> Faire revenir l’oignon 3 min à feu moyen et le bœuf 6 min à feu moyen-vif jusqu’à cuisson complète.
+> Ajouter tomates, cumin et boulgour, mijoter 4 min à feu doux.
+> Farcir les poivrons et enfourner 30 à 35 min, couverts de papier cuisson. Parsemer de persil.
+
+Soba au saumon et sauce miso-citron | Plat | Japonais | 15 | 15 | Facile
+@id b-soba-au-saumon-et-sauce-miso-citron
+@img img/recettes/b-soba-au-saumon-et-sauce-miso-citron.webp
+- nouilles soba: 180 g
+- saumon: 260 g
+- concombre: 0.5 pièce
+- pâte miso: 25 g
+- citron: 1 pièce
+- sauce soja: 1 c. à soupe
+- graines de sésame: 1 c. à café
+- huile de tournesol: 1 c. à soupe
+- oignon nouveau: 1 pièce
+> Cuire les nouilles soba selon le paquet et les égoutter.
+> Couper le saumon en dés et émincer concombre et oignon nouveau.
+> Cuire le saumon dans l’huile 6 à 8 min à feu moyen-vif jusqu’à cuisson à cœur.
+> Délayer le miso dans deux cuillères d’eau tiède, ajouter sauce soja et jus de citron.
+> Mélanger les nouilles, le saumon, le concombre et la sauce. Parsemer de sésame et ciboule.
+
+Tarte fine à la betterave et au chèvre | Plat | Français | 15 | 25 | Facile
+@id b-tarte-fine-a-la-betterave-et-au-chevre
+@img img/recettes/b-tarte-fine-a-la-betterave-et-au-chevre.webp
+- pâte feuilletée: 1 pièce
+- betterave cuite: 250 g
+- fromage de chèvre: 100 g
+- miel: 1 c. à soupe
+- thym: 1 c. à café
+- roquette: 50 g
+- huile d’olive: 1 c. à café
+> Préchauffer le four à 200 °C et dérouler la pâte sur une plaque.
+> Trancher la betterave cuite et le fromage de chèvre.
+> Disposer les tranches sur la pâte en laissant 2 cm de bord, puis ajouter thym et huile.
+> Cuire 20 à 25 min au four jusqu’à ce que la pâte soit dorée et croustillante.
+> Ajouter le miel à la sortie du four et servir avec la roquette.
+
+Biryani végétarien aux légumes rôtis | Plat | Indien | 20 | 35 | Moyenne
+@id b-biryani-vegetarien-aux-legumes-rotis
+@img img/recettes/b-biryani-vegetarien-aux-legumes-rotis.webp
+- riz basmati: 160 g
+- chou-fleur: 250 g
+- carotte: 2 pièce
+- petits pois: 100 g
+- oignon: 1 pièce
+- yaourt nature: 100 g
+- garam masala: 2 c. à café
+- gingembre frais: 15 g
+- huile de tournesol: 1 c. à soupe
+> Préchauffer le four à 210 °C et rôtir le chou-fleur et les carottes avec la moitié de l’huile 20 min.
+> Rincer le riz et le cuire 10 min à feu doux dans l’eau frémissante puis égoutter.
+> Faire revenir l’oignon, le gingembre et le garam masala 5 min à feu moyen dans le reste d’huile.
+> Ajouter les petits pois et le yaourt puis mijoter 4 min à feu doux.
+> Réunir riz et légumes dans la sauteuse, couvrir et réchauffer 5 min à feu doux avant de servir.
